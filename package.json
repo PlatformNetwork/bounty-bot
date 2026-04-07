@@ -1,0 +1,30 @@
+{
+  "name": "bounty-bot",
+  "version": "1.0.0",
+  "description": "GitHub bounty validation bot - controlled by Atlas via API",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.18",
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
