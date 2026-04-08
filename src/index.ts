@@ -28,6 +28,7 @@ import { startRequeueRecovery, stopRequeueRecovery } from './queue/requeue-recov
 import { getIssue } from './github/client.js';
 import { handleRequeue, handleForceRelease } from './api/requeue.js';
 import { getProcessingStatus, getDeadLetterList, recoverDeadLetterItem } from './api/status.js';
+import { loadRules } from './rules/index.js';
 
 /**
  * Ensure the data directory exists for SQLite persistence.
@@ -209,6 +210,53 @@ export function createApp(): express.Express {
     }
   });
 
+  // POST /api/v1/rules/reload — hot-reload rules from disk
+  apiRouter.post('/rules/reload', (_req, res) => {
+    import('./rules/index.js')
+      .then((mod) => mod.reloadRules())
+      .then((reloaded) => {
+        logger.info({ count: reloaded.length }, 'Rules hot-reloaded');
+        res.status(200).json({
+          status: 'reloaded',
+          count: reloaded.length,
+          rules: reloaded.map((r) => ({
+            id: r.id,
+            category: r.category,
+            severity: r.severity,
+            enabled: r.enabled !== false,
+          })),
+        });
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err: msg }, 'Rules reload failed');
+        res.status(500).json({ error: 'reload_failed', message: msg });
+      });
+  });
+
+  // GET /api/v1/rules — list loaded rules
+  apiRouter.get('/rules', (_req, res) => {
+    import('./rules/index.js')
+      .then((mod) => {
+        const rules = mod.getRules();
+        res.status(200).json({
+          count: rules.length,
+          rules: rules.map((r) => ({
+            id: r.id,
+            category: r.category,
+            severity: r.severity,
+            description: r.description,
+            enabled: r.enabled !== false,
+            weight: r.weight ?? 1.0,
+          })),
+        });
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ error: 'rules_error', message: msg });
+      });
+  });
+
   app.use('/api/v1', apiRouter);
 
   return app;
@@ -269,6 +317,10 @@ async function main(): Promise<void> {
       return false;
     }
   });
+
+  // Load validation rules from rules/*.ts
+  const rules = await loadRules();
+  logger.info({ count: rules.length }, 'Validation rules loaded');
 
   // Start background services
   startPoller();

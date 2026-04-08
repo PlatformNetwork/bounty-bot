@@ -13,6 +13,8 @@ import { analyzeSpam, isSpam, type SpamIssueInput } from '../detection/spam.js';
 import { findDuplicates } from '../detection/duplicate.js';
 import { analyzeEditHistory } from '../detection/edit-history.js';
 import { scoreSpamLikelihood, scoreIssueValidity } from '../detection/llm-scorer.js';
+import { evaluateRules, formatRulesForPrompt } from '../rules/index.js';
+import type { RuleContext } from '../rules/types.js';
 import type { VerdictResult } from './verdict.js';
 
 /* ------------------------------------------------------------------ */
@@ -241,11 +243,71 @@ export async function runValidationPipeline(
     };
   }
 
-  // LLM validity gate — final check before marking as valid
-  logger.info({ issueNumber }, 'Pipeline: running LLM validity check');
-  const llmValidity = await scoreIssueValidity({
+  // 6b. Rule evaluation — apply all loaded rules from rules/*.ts
+  logger.info({ issueNumber }, 'Pipeline: evaluating rules');
+  const ruleCtx: RuleContext = {
+    issueNumber,
     title,
     body,
+    author,
+    createdAt,
+    mediaUrls: mediaResult.urls,
+    mediaAccessible: mediaResult.accessible,
+    spamScore: spamResult.overallScore,
+    duplicateScore: dupResult.similarity,
+    editFraudScore: editResult.fraudScore,
+    labels: [],
+  };
+  const ruleReport = await evaluateRules(ruleCtx);
+
+  // If any REJECT rule failed, immediately invalidate
+  if (ruleReport.hasReject) {
+    const rejectRules = ruleReport.failed.filter((r) => r.severity === 'reject');
+    logger.info(
+      { issueNumber, verdict: 'invalid', rejectRules: rejectRules.map((r) => r.ruleId) },
+      'Pipeline: REJECT rule(s) triggered',
+    );
+
+    return {
+      verdict: 'invalid',
+      rationale: `Rule violation: ${rejectRules.map((r) => r.message).join('; ')}`,
+      checklist: rejectRules.map((r) => r.message),
+      evidence: { ...evidenceParts, rules: ruleReport },
+      spamScore: spamResult.overallScore,
+      mediaCheck: {
+        hasMedia: mediaResult.hasMedia,
+        accessible: mediaResult.accessible,
+      },
+    };
+  }
+
+  // If REQUIRE rules failed, invalidate
+  const requireFailures = ruleReport.failed.filter((r) => r.severity === 'require');
+  if (requireFailures.length > 0) {
+    logger.info(
+      { issueNumber, verdict: 'invalid', requireRules: requireFailures.map((r) => r.ruleId) },
+      'Pipeline: REQUIRE rule(s) not met',
+    );
+
+    return {
+      verdict: 'invalid',
+      rationale: `Missing requirement: ${requireFailures.map((r) => r.message).join('; ')}`,
+      checklist: requireFailures.map((r) => r.message),
+      evidence: { ...evidenceParts, rules: ruleReport },
+      spamScore: spamResult.overallScore,
+      mediaCheck: {
+        hasMedia: mediaResult.hasMedia,
+        accessible: mediaResult.accessible,
+      },
+    };
+  }
+
+  // LLM validity gate — includes rule evaluation results in prompt context
+  logger.info({ issueNumber }, 'Pipeline: running LLM validity check');
+  const rulesPromptContext = formatRulesForPrompt(ruleReport);
+  const llmValidity = await scoreIssueValidity({
+    title,
+    body: rulesPromptContext ? `${body}\n\n${rulesPromptContext}` : body,
     mediaUrls: mediaResult.urls,
   });
 
@@ -261,8 +323,9 @@ export async function runValidationPipeline(
       checklist: [
         'Ensure the issue describes a genuine, reproducible bug',
         'Provide clear steps to reproduce and evidence',
+        ...ruleReport.failed.map((r) => r.message),
       ],
-      evidence: { ...evidenceParts, llmValidity },
+      evidence: { ...evidenceParts, llmValidity, rules: ruleReport },
       spamScore: spamResult.overallScore,
       mediaCheck: {
         hasMedia: mediaResult.hasMedia,
@@ -272,12 +335,15 @@ export async function runValidationPipeline(
   }
 
   // All checks passed — valid
-  logger.info({ issueNumber, verdict: 'valid' }, 'Pipeline: all checks passed');
+  logger.info(
+    { issueNumber, verdict: 'valid', rulesReport: ruleReport.summary },
+    'Pipeline: all checks passed',
+  );
 
   return {
     verdict: 'valid',
-    rationale: 'All validation checks passed: media accessible, not spam, not duplicate, clean edit history.',
-    evidence: evidenceParts,
+    rationale: `All validation checks passed. ${ruleReport.summary}`,
+    evidence: { ...evidenceParts, rules: ruleReport },
     spamScore: spamResult.overallScore,
     mediaCheck: {
       hasMedia: mediaResult.hasMedia,
