@@ -3,9 +3,13 @@
  * Fails fast if any port in the bounty-bot allocation (3235-3239) is already in use.
  */
 
-import { createServer } from 'net';
-import { logger } from './logger.js';
-import { PORT_RANGE_START, PORT_RANGE_END, DEFAULT_API_PORT } from './config.js';
+import { createServer } from "net";
+import { logger } from "./logger.js";
+import {
+  PORT_RANGE_START,
+  PORT_RANGE_END,
+  DEFAULT_API_PORT,
+} from "./config.js";
 
 /**
  * Check if a port is already in use.
@@ -13,18 +17,18 @@ import { PORT_RANGE_START, PORT_RANGE_END, DEFAULT_API_PORT } from './config.js'
 export async function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const tester = createServer()
-      .once('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') {
+      .once("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") {
           resolve(true);
         } else {
-          logger.warn({ err, port }, 'Unexpected port check error');
+          logger.warn({ err, port }, "Unexpected port check error");
           resolve(false);
         }
       })
-      .once('listening', () => {
+      .once("listening", () => {
         tester.close(() => resolve(false));
       })
-      .listen(port, '0.0.0.0');
+      .listen(port, "0.0.0.0");
   });
 }
 
@@ -42,7 +46,7 @@ export async function checkPortConflicts(): Promise<void> {
   }
 
   if (conflicts.length > 0) {
-    const conflictList = conflicts.join(', ');
+    const conflictList = conflicts.join(", ");
     logger.fatal(
       { conflicts },
       `Port conflict detected: ports ${conflictList} are already in use. ` +
@@ -55,7 +59,7 @@ export async function checkPortConflicts(): Promise<void> {
     );
   }
 
-  logger.info('Port conflict check passed - all bounty-bot ports available');
+  logger.info("Port conflict check passed - all bounty-bot ports available");
 }
 
 /**
@@ -67,7 +71,7 @@ export function getApiPort(): number {
   if (port < PORT_RANGE_START || port > PORT_RANGE_END) {
     logger.warn(
       { port, range: `${PORT_RANGE_START}-${PORT_RANGE_END}` },
-      'Port outside bounty-bot allocation range',
+      "Port outside bounty-bot allocation range",
     );
   }
 

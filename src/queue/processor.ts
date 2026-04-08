@@ -5,8 +5,8 @@
  * retry management, and dead-letter handling for exhausted retries.
  */
 
-import { MAX_RETRIES } from '../config.js';
-import { logger } from '../logger.js';
+import { MAX_RETRIES } from "../config.js";
+import { logger } from "../logger.js";
 import {
   getPendingBounties,
   getInProgressBounties,
@@ -15,11 +15,11 @@ import {
   unlockBounty,
   insertRequeueRecord,
   getDeadLetterItems,
-} from '../db/index.js';
-import { acquireLock, releaseLock } from '../redis.js';
-import { runValidationPipeline } from '../validation/pipeline.js';
-import { publishVerdict } from '../validation/verdict.js';
-import { moveToDeadLetter } from './dead-letter.js';
+} from "../db/index.js";
+import { acquireLock, releaseLock } from "../redis.js";
+import { runValidationPipeline } from "../validation/pipeline.js";
+import { publishVerdict } from "../validation/verdict.js";
+import { moveToDeadLetter } from "./dead-letter.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -50,7 +50,7 @@ const queue: QueueEntry[] = [];
 /* ------------------------------------------------------------------ */
 
 let processorTimer: ReturnType<typeof setInterval> | null = null;
-const LOCK_OWNER = 'queue-processor';
+const LOCK_OWNER = "queue-processor";
 const LOCK_TTL_SECONDS = 300;
 
 /* ------------------------------------------------------------------ */
@@ -64,7 +64,7 @@ export function enqueue(entry: QueueEntry): void {
   queue.push(entry);
   logger.info(
     { issueNumber: entry.issueNumber, queueLength: queue.length },
-    'Queue: entry added',
+    "Queue: entry added",
   );
 }
 
@@ -84,7 +84,7 @@ export async function processQueue(): Promise<void> {
   if (!locked) {
     logger.info(
       { issueNumber: entry.issueNumber },
-      'Queue: could not acquire lock — re-enqueuing',
+      "Queue: could not acquire lock — re-enqueuing",
     );
     queue.push(entry);
     return;
@@ -93,11 +93,11 @@ export async function processQueue(): Promise<void> {
   try {
     // Lock bounty in DB
     lockBounty(entry.issueNumber, LOCK_OWNER, LOCK_TTL_SECONDS * 1000);
-    updateBountyStatus(entry.issueNumber, 'in_progress');
+    updateBountyStatus(entry.issueNumber, "in_progress");
 
     logger.info(
       { issueNumber: entry.issueNumber, retry: entry.retryCount },
-      'Queue: processing bounty',
+      "Queue: processing bounty",
     );
 
     // Run the full validation pipeline
@@ -111,13 +111,13 @@ export async function processQueue(): Promise<void> {
 
     logger.info(
       { issueNumber: entry.issueNumber, verdict: verdictResult.verdict },
-      'Queue: processing complete',
+      "Queue: processing complete",
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(
       { issueNumber: entry.issueNumber, err: msg },
-      'Queue: processing failed',
+      "Queue: processing failed",
     );
 
     const nextRetry = entry.retryCount + 1;
@@ -131,7 +131,7 @@ export async function processQueue(): Promise<void> {
 
       logger.warn(
         { issueNumber: entry.issueNumber, retries: nextRetry },
-        'Queue: bounty dead-lettered after max retries',
+        "Queue: bounty dead-lettered after max retries",
       );
     } else {
       // Requeue with incremented retry count
@@ -148,7 +148,7 @@ export async function processQueue(): Promise<void> {
 
       logger.info(
         { issueNumber: entry.issueNumber, retry: nextRetry },
-        'Queue: bounty re-enqueued for retry',
+        "Queue: bounty re-enqueued for retry",
       );
     }
   } finally {
@@ -189,17 +189,17 @@ export function getQueuePosition(issueNumber: number): number {
  */
 export function startQueueProcessor(intervalMs?: number): void {
   if (processorTimer) {
-    logger.warn('Queue processor: already running');
+    logger.warn("Queue processor: already running");
     return;
   }
 
   const interval = intervalMs ?? 5000;
-  logger.info({ intervalMs: interval }, 'Queue processor: starting');
+  logger.info({ intervalMs: interval }, "Queue processor: starting");
 
   processorTimer = setInterval(() => {
     processQueue().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg }, 'Queue processor: iteration failed');
+      logger.error({ err: msg }, "Queue processor: iteration failed");
     });
   }, interval);
 }
@@ -211,6 +211,6 @@ export function stopQueueProcessor(): void {
   if (processorTimer) {
     clearInterval(processorTimer);
     processorTimer = null;
-    logger.info('Queue processor: stopped');
+    logger.info("Queue processor: stopped");
   }
 }

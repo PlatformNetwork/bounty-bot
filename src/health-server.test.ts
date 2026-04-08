@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   startHealthServer,
   stopHealthServer,
   setReady,
   registerReadinessCheck,
   clearReadinessChecks,
-} from './health-server.js';
+} from "./health-server.js";
 
-describe('health-server', () => {
+describe("health-server", () => {
   const testPort = 3298; // Use port outside mission allocation for tests
 
   beforeEach(() => {
@@ -19,8 +19,8 @@ describe('health-server', () => {
     await stopHealthServer();
   });
 
-  describe('/health endpoint', () => {
-    it('returns 200 OK when server is running', async () => {
+  describe("/health endpoint", () => {
+    it("returns 200 OK when server is running", async () => {
       await startHealthServer(testPort);
       const response = await fetch(`http://localhost:${testPort}/health`);
       expect(response.status).toBe(200);
@@ -29,23 +29,23 @@ describe('health-server', () => {
         service: string;
         timestamp: string;
       };
-      expect(body.status).toBe('ok');
-      expect(body.service).toBe('bounty-bot');
+      expect(body.status).toBe("ok");
+      expect(body.service).toBe("bounty-bot");
       expect(body.timestamp).toBeDefined();
     });
   });
 
-  describe('/ready endpoint', () => {
-    it('returns 503 when not ready', async () => {
+  describe("/ready endpoint", () => {
+    it("returns 503 when not ready", async () => {
       await startHealthServer(testPort);
       setReady(false);
       const response = await fetch(`http://localhost:${testPort}/ready`);
       expect(response.status).toBe(503);
       const body = (await response.json()) as { status: string };
-      expect(body.status).toBe('not_ready');
+      expect(body.status).toBe("not_ready");
     });
 
-    it('returns 200 when ready', async () => {
+    it("returns 200 when ready", async () => {
       await startHealthServer(testPort);
       setReady(true);
       const response = await fetch(`http://localhost:${testPort}/ready`);
@@ -55,11 +55,11 @@ describe('health-server', () => {
         service: string;
         timestamp: string;
       };
-      expect(body.status).toBe('ready');
-      expect(body.service).toBe('bounty-bot');
+      expect(body.status).toBe("ready");
+      expect(body.service).toBe("bounty-bot");
     });
 
-    it('returns 503 when readiness check fails', async () => {
+    it("returns 503 when readiness check fails", async () => {
       await startHealthServer(testPort);
       setReady(true);
       registerReadinessCheck(() => false);
@@ -67,7 +67,7 @@ describe('health-server', () => {
       expect(response.status).toBe(503);
     });
 
-    it('returns 200 when all readiness checks pass', async () => {
+    it("returns 200 when all readiness checks pass", async () => {
       await startHealthServer(testPort);
       setReady(true);
       registerReadinessCheck(() => true);
@@ -76,7 +76,7 @@ describe('health-server', () => {
       expect(response.status).toBe(200);
     });
 
-    it('supports async readiness checks', async () => {
+    it("supports async readiness checks", async () => {
       await startHealthServer(testPort);
       setReady(true);
       registerReadinessCheck(async () => {
@@ -88,8 +88,8 @@ describe('health-server', () => {
     });
   });
 
-  describe('unknown paths', () => {
-    it('returns 404 for unknown routes', async () => {
+  describe("unknown paths", () => {
+    it("returns 404 for unknown routes", async () => {
       await startHealthServer(testPort);
       const response = await fetch(`http://localhost:${testPort}/unknown`);
       expect(response.status).toBe(404);

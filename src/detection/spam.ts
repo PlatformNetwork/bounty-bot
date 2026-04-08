@@ -6,19 +6,17 @@
  * quality indicators) into an overall spam score.
  */
 
-import { logger } from '../logger.js';
-import { insertSpamAnalysis } from '../db/index.js';
-import { TARGET_REPO } from '../config.js';
-import { listRecentIssues } from '../github/client.js';
+import { logger } from "../logger.js";
+import { insertSpamAnalysis } from "../db/index.js";
+import { TARGET_REPO } from "../config.js";
+import { listRecentIssues } from "../github/client.js";
 
 /* ------------------------------------------------------------------ */
 /*  Config                                                             */
 /* ------------------------------------------------------------------ */
 
 /** Spam score threshold — issues above this are flagged as spam. */
-export const SPAM_THRESHOLD = parseFloat(
-  process.env.SPAM_THRESHOLD || '0.7',
-);
+export const SPAM_THRESHOLD = parseFloat(process.env.SPAM_THRESHOLD || "0.7");
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -48,7 +46,7 @@ export interface SpamIssueInput {
 function wordSet(text: string): Set<string> {
   const words = text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 1);
   return new Set(words);
@@ -91,7 +89,7 @@ async function computeTemplateScore(
 ): Promise<number> {
   if (recentBodies.length === 0) return 0;
 
-  const issueWords = wordSet(issue.title + ' ' + issue.body);
+  const issueWords = wordSet(issue.title + " " + issue.body);
   let maxSimilarity = 0;
 
   for (const body of recentBodies) {
@@ -149,7 +147,7 @@ function computeParityScore(issue: SpamIssueInput): number {
   }
 
   // No line breaks or structure in body (flat text blob)
-  if (body.length > 50 && !body.includes('\n')) {
+  if (body.length > 50 && !body.includes("\n")) {
     score += 0.1;
   }
 
@@ -175,7 +173,7 @@ function computeParityScore(issue: SpamIssueInput): number {
 export async function analyzeSpam(
   issue: SpamIssueInput,
 ): Promise<SpamAnalysisResult> {
-  const parts = TARGET_REPO.split('/');
+  const parts = TARGET_REPO.split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     throw new Error(`Invalid TARGET_REPO format: "${TARGET_REPO}"`);
   }
@@ -183,24 +181,27 @@ export async function analyzeSpam(
 
   // Fetch recent issues to compare against
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  let recentIssues: Array<{ title: string; body: string | null; user: { login: string } | null; number: number }> = [];
+  let recentIssues: Array<{
+    title: string;
+    body: string | null;
+    user: { login: string } | null;
+    number: number;
+  }> = [];
 
   try {
     recentIssues = await listRecentIssues(owner, repo, twoHoursAgo);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ err: msg }, 'Spam analysis: failed to fetch recent issues');
+    logger.warn({ err: msg }, "Spam analysis: failed to fetch recent issues");
   }
 
   // Filter to same author, exclude current issue
   const authorIssues = recentIssues.filter(
-    (i) =>
-      i.user?.login === issue.author &&
-      i.number !== issue.issueNumber,
+    (i) => i.user?.login === issue.author && i.number !== issue.issueNumber,
   );
 
   const recentBodies = authorIssues.map(
-    (i) => (i.title ?? '') + ' ' + (i.body ?? ''),
+    (i) => (i.title ?? "") + " " + (i.body ?? ""),
   );
 
   // Compute scores
@@ -217,7 +218,7 @@ export async function analyzeSpam(
     `burst=${burstScore.toFixed(2)} (${authorIssues.length + 1} issues in 2h window)`,
     `parity=${parityScore.toFixed(2)}`,
     `overall=${overallScore.toFixed(2)} (threshold=${SPAM_THRESHOLD})`,
-  ].join('; ');
+  ].join("; ");
 
   // Persist to DB
   insertSpamAnalysis({
@@ -231,7 +232,7 @@ export async function analyzeSpam(
 
   logger.info(
     { issueNumber: issue.issueNumber, overallScore: overallScore.toFixed(2) },
-    'Spam analysis complete',
+    "Spam analysis complete",
   );
 
   return { templateScore, burstScore, parityScore, overallScore, details };

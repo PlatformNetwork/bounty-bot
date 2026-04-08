@@ -6,7 +6,7 @@
  * replay window.
  */
 
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from "crypto";
 
 /** Maximum age of a signed request before it is rejected (5 minutes). */
 const MAX_TIMESTAMP_AGE_MS = 300_000;
@@ -22,11 +22,11 @@ export function signRequest(
   body: string,
   secret?: string,
 ): { signature: string; timestamp: string } {
-  const hmacSecret = secret || process.env.INTER_SERVICE_HMAC_SECRET || '';
+  const hmacSecret = secret || process.env.INTER_SERVICE_HMAC_SECRET || "";
   const timestamp = Date.now().toString();
-  const signature = createHmac('sha256', hmacSecret)
-    .update(timestamp + '.' + body)
-    .digest('hex');
+  const signature = createHmac("sha256", hmacSecret)
+    .update(timestamp + "." + body)
+    .digest("hex");
   return { signature, timestamp };
 }
 
@@ -48,7 +48,7 @@ export function verifySignature(
   timestamp: string,
   secret?: string,
 ): boolean {
-  const hmacSecret = secret || process.env.INTER_SERVICE_HMAC_SECRET || '';
+  const hmacSecret = secret || process.env.INTER_SERVICE_HMAC_SECRET || "";
 
   // Check timestamp freshness
   const requestTime = parseInt(timestamp, 10);
@@ -58,13 +58,13 @@ export function verifySignature(
   if (age > MAX_TIMESTAMP_AGE_MS) return false;
 
   // Compute expected signature
-  const expected = createHmac('sha256', hmacSecret)
-    .update(timestamp + '.' + body)
-    .digest('hex');
+  const expected = createHmac("sha256", hmacSecret)
+    .update(timestamp + "." + body)
+    .digest("hex");
 
   // Timing-safe comparison
-  const sigBuf = Buffer.from(signature, 'utf8');
-  const expBuf = Buffer.from(expected, 'utf8');
+  const sigBuf = Buffer.from(signature, "utf8");
+  const expBuf = Buffer.from(expected, "utf8");
 
   if (sigBuf.length !== expBuf.length) return false;
 
@@ -81,11 +81,11 @@ export function verifySignature(
 export function buildSignedHeaders(
   body: string,
   secret?: string,
-): { 'X-Signature': string; 'X-Timestamp': string; 'Content-Type': string } {
+): { "X-Signature": string; "X-Timestamp": string; "Content-Type": string } {
   const { signature, timestamp } = signRequest(body, secret);
   return {
-    'X-Signature': `sha256=${signature}`,
-    'X-Timestamp': timestamp,
-    'Content-Type': 'application/json',
+    "X-Signature": `sha256=${signature}`,
+    "X-Timestamp": timestamp,
+    "Content-Type": "application/json",
   };
 }

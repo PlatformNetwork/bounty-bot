@@ -6,15 +6,10 @@
  * prevent duplicate operations.
  */
 
-import { TARGET_REPO } from '../config.js';
-import { logger } from '../logger.js';
-import { checkIdempotencyKey, setIdempotencyKey } from '../redis.js';
-import {
-  addLabels,
-  removeLabel,
-  postComment,
-  closeIssue,
-} from './client.js';
+import { TARGET_REPO } from "../config.js";
+import { logger } from "../logger.js";
+import { checkIdempotencyKey, setIdempotencyKey } from "../redis.js";
+import { addLabels, removeLabel, postComment, closeIssue } from "./client.js";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -22,7 +17,7 @@ import {
 
 /** Parse owner/repo from TARGET_REPO config. */
 function parseTargetRepo(): { owner: string; repo: string } {
-  const parts = TARGET_REPO.split('/');
+  const parts = TARGET_REPO.split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     throw new Error(
       `Invalid TARGET_REPO format: "${TARGET_REPO}" — expected "owner/repo"`,
@@ -32,7 +27,7 @@ function parseTargetRepo(): { owner: string; repo: string } {
 }
 
 /** Terminal verdict labels that should be cleared before applying a new verdict. */
-const VERDICT_LABELS = ['valid', 'invalid', 'duplicate', 'ide'];
+const VERDICT_LABELS = ["valid", "invalid", "duplicate", "ide"];
 
 /* ------------------------------------------------------------------ */
 /*  Verdict mutations                                                  */
@@ -58,12 +53,12 @@ export async function applyValidVerdict(
   if (existing) {
     logger.info(
       { issueNumber },
-      'Valid verdict already applied (idempotent skip)',
+      "Valid verdict already applied (idempotent skip)",
     );
     return;
   }
 
-  await addLabels(owner, repo, issueNumber, ['ide', 'valid']);
+  await addLabels(owner, repo, issueNumber, ["ide", "valid"]);
 
   let body = `## ✅ Verdict: Valid\n\n**Rationale:** ${rationale}`;
   if (evidence) {
@@ -73,7 +68,7 @@ export async function applyValidVerdict(
   await postComment(owner, repo, issueNumber, body);
   await setIdempotencyKey(idempotencyKey, new Date().toISOString(), 86400);
 
-  logger.info({ issueNumber }, 'Applied valid verdict');
+  logger.info({ issueNumber }, "Applied valid verdict");
 }
 
 /**
@@ -95,16 +90,16 @@ export async function applyInvalidVerdict(
   if (existing) {
     logger.info(
       { issueNumber },
-      'Invalid verdict already applied (idempotent skip)',
+      "Invalid verdict already applied (idempotent skip)",
     );
     return;
   }
 
-  await addLabels(owner, repo, issueNumber, ['invalid']);
+  await addLabels(owner, repo, issueNumber, ["invalid"]);
 
   let body = `## ❌ Verdict: Invalid\n\n**Rationale:** ${rationale}`;
   if (checklist && checklist.length > 0) {
-    body += '\n\n**Checklist:**\n';
+    body += "\n\n**Checklist:**\n";
     for (const item of checklist) {
       body += `- [ ] ${item}\n`;
     }
@@ -114,7 +109,7 @@ export async function applyInvalidVerdict(
   await closeIssue(owner, repo, issueNumber);
   await setIdempotencyKey(idempotencyKey, new Date().toISOString(), 86400);
 
-  logger.info({ issueNumber }, 'Applied invalid verdict');
+  logger.info({ issueNumber }, "Applied invalid verdict");
 }
 
 /**
@@ -136,12 +131,12 @@ export async function applyDuplicateVerdict(
   if (existing) {
     logger.info(
       { issueNumber },
-      'Duplicate verdict already applied (idempotent skip)',
+      "Duplicate verdict already applied (idempotent skip)",
     );
     return;
   }
 
-  await addLabels(owner, repo, issueNumber, ['duplicate']);
+  await addLabels(owner, repo, issueNumber, ["duplicate"]);
 
   const body =
     `## 🔁 Verdict: Duplicate\n\n` +
@@ -152,7 +147,10 @@ export async function applyDuplicateVerdict(
   await closeIssue(owner, repo, issueNumber);
   await setIdempotencyKey(idempotencyKey, new Date().toISOString(), 86400);
 
-  logger.info({ issueNumber, originalIssueNumber }, 'Applied duplicate verdict');
+  logger.info(
+    { issueNumber, originalIssueNumber },
+    "Applied duplicate verdict",
+  );
 }
 
 /**
@@ -167,5 +165,5 @@ export async function clearVerdictLabels(issueNumber: number): Promise<void> {
     await removeLabel(owner, repo, issueNumber, label);
   }
 
-  logger.info({ issueNumber }, 'Cleared verdict labels');
+  logger.info({ issueNumber }, "Cleared verdict labels");
 }

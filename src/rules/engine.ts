@@ -9,8 +9,8 @@
  * collects applicable LLM instructions. The report contains both.
  */
 
-import { logger } from '../logger.js';
-import { getCodeRules, getCodeRulesByCategory, getLLMRules } from './loader.js';
+import { logger } from "../logger.js";
+import { getCodeRules, getCodeRulesByCategory, getLLMRules } from "./loader.js";
 import type {
   CodeRule,
   LLMRulePriority,
@@ -18,7 +18,7 @@ import type {
   RuleResult,
   RuleEvaluationReport,
   RuleCategory,
-} from './types.js';
+} from "./types.js";
 
 const PRIORITY_ORDER: Record<LLMRulePriority, number> = {
   critical: 0,
@@ -51,9 +51,9 @@ export async function evaluateRules(
     }
   }
 
-  const hasReject = failed.some((r) => r.severity === 'reject');
+  const hasReject = failed.some((r) => r.severity === "reject");
   const penaltyScore = failed
-    .filter((r) => r.severity === 'penalize')
+    .filter((r) => r.severity === "penalize")
     .reduce((sum, r) => sum + r.weight, 0);
 
   // --- LLM rules ---
@@ -75,7 +75,7 @@ export async function evaluateRules(
       hasReject,
       penaltyScore: penaltyScore.toFixed(2),
     },
-    'Rule evaluation complete',
+    "Rule evaluation complete",
   );
 
   return {
@@ -118,53 +118,57 @@ export function formatRulesForPrompt(report: RuleEvaluationReport): string {
   // --- Code rule results ---
   const { passed, failed } = report.codeResults;
   if (report.totalCodeRules > 0) {
-    sections.push('## Code Rule Results');
-    sections.push(`${passed.length}/${report.totalCodeRules} programmatic checks passed.`);
-    sections.push('');
+    sections.push("## Code Rule Results");
+    sections.push(
+      `${passed.length}/${report.totalCodeRules} programmatic checks passed.`,
+    );
+    sections.push("");
 
     if (failed.length > 0) {
-      sections.push('### Failed Checks');
+      sections.push("### Failed Checks");
       for (const r of failed) {
-        sections.push(`- [${r.severity.toUpperCase()}] ${r.ruleId}: ${r.message}`);
+        sections.push(
+          `- [${r.severity.toUpperCase()}] ${r.ruleId}: ${r.message}`,
+        );
       }
-      sections.push('');
+      sections.push("");
     }
 
     if (passed.length > 0 && passed.length <= 8) {
-      sections.push('### Passed Checks');
+      sections.push("### Passed Checks");
       for (const r of passed) {
         sections.push(`- [OK] ${r.ruleId}`);
       }
-      sections.push('');
+      sections.push("");
     } else if (passed.length > 8) {
       sections.push(`### Passed Checks (${passed.length} total)`);
       for (const r of passed.slice(0, 4)) {
         sections.push(`- [OK] ${r.ruleId}`);
       }
       sections.push(`- ... and ${passed.length - 4} more`);
-      sections.push('');
+      sections.push("");
     }
 
     if (report.hasReject) {
       sections.push(
-        '**IMPORTANT:** One or more REJECT checks failed. The issue MUST be marked INVALID.',
+        "**IMPORTANT:** One or more REJECT checks failed. The issue MUST be marked INVALID.",
       );
-      sections.push('');
+      sections.push("");
     }
   }
 
   // --- LLM instructions ---
   if (report.llmInstructions.length > 0) {
-    sections.push('## Evaluation Instructions');
-    sections.push('You MUST follow these rules when making your verdict:');
-    sections.push('');
+    sections.push("## Evaluation Instructions");
+    sections.push("You MUST follow these rules when making your verdict:");
+    sections.push("");
     for (let i = 0; i < report.llmInstructions.length; i++) {
       sections.push(`${i + 1}. ${report.llmInstructions[i]}`);
     }
-    sections.push('');
+    sections.push("");
   }
 
-  return sections.join('\n');
+  return sections.join("\n");
 }
 
 /* ------------------------------------------------------------------ */
@@ -184,11 +188,15 @@ async function evaluateSingle(
       passed: ok,
       message: ok
         ? rule.description
-        : (rule.failureMessage ?? `Rule ${rule.id} failed: ${rule.description}`),
+        : (rule.failureMessage ??
+          `Rule ${rule.id} failed: ${rule.description}`),
       weight: rule.weight ?? 1.0,
     };
   } catch (err) {
-    logger.warn({ err, ruleId: rule.id }, 'Code rule threw — treating as failed');
+    logger.warn(
+      { err, ruleId: rule.id },
+      "Code rule threw — treating as failed",
+    );
     return {
       ruleId: rule.id,
       category: rule.category,
@@ -210,9 +218,9 @@ function buildSummary(
     if (failed.length === 0) {
       parts.push(`All ${totalCode} code rules passed.`);
     } else {
-      const rejects = failed.filter((r) => r.severity === 'reject').length;
-      const penalties = failed.filter((r) => r.severity === 'penalize').length;
-      const flags = failed.filter((r) => r.severity === 'flag').length;
+      const rejects = failed.filter((r) => r.severity === "reject").length;
+      const penalties = failed.filter((r) => r.severity === "penalize").length;
+      const flags = failed.filter((r) => r.severity === "flag").length;
       parts.push(`${failed.length}/${totalCode} code rules failed`);
       if (rejects > 0) parts.push(`${rejects} REJECT`);
       if (penalties > 0) parts.push(`${penalties} PENALIZE`);
@@ -222,5 +230,5 @@ function buildSummary(
   if (totalLLM > 0) {
     parts.push(`${totalLLM} LLM instructions active`);
   }
-  return parts.join(' | ') || 'No rules configured.';
+  return parts.join(" | ") || "No rules configured.";
 }

@@ -41,4 +41,4 @@ A **DUPLICATE** issue:
 - Confidence below 0.6 means you are uncertain — flag it in reasoning.
 - Never reveal internal scoring thresholds or detection heuristics.`;
 
-export const EVALUATOR_NAME = 'BountyValidator';
+export const EVALUATOR_NAME = "BountyValidator";

@@ -7,10 +7,10 @@
  * production, but this module can also run standalone for testing.
  */
 
-import express, { type Express, type Request, type Response } from 'express';
-import http from 'http';
-import { logger } from './logger.js';
-import { SERVICE_NAME } from './config.js';
+import express, { type Express, type Request, type Response } from "express";
+import http from "http";
+import { logger } from "./logger.js";
+import { SERVICE_NAME } from "./config.js";
 
 let server: http.Server | null = null;
 let readinessState = false;
@@ -39,22 +39,22 @@ export function clearReadinessChecks(): void {
  */
 export function setReady(ready: boolean): void {
   readinessState = ready;
-  logger.info({ ready }, 'Readiness state updated');
+  logger.info({ ready }, "Readiness state updated");
 }
 
 /**
  * Mount health and readiness routes on an Express app.
  */
 export function mountHealthRoutes(app: Express): void {
-  app.get('/health', (_req: Request, res: Response) => {
+  app.get("/health", (_req: Request, res: Response) => {
     res.json({
-      status: 'ok',
+      status: "ok",
       service: SERVICE_NAME,
       timestamp: new Date().toISOString(),
     });
   });
 
-  app.get('/ready', async (_req: Request, res: Response) => {
+  app.get("/ready", async (_req: Request, res: Response) => {
     try {
       let ready = readinessState;
       for (const check of readinessChecks) {
@@ -66,21 +66,21 @@ export function mountHealthRoutes(app: Express): void {
 
       if (ready) {
         res.json({
-          status: 'ready',
+          status: "ready",
           service: SERVICE_NAME,
           timestamp: new Date().toISOString(),
         });
       } else {
         res.status(503).json({
-          status: 'not_ready',
+          status: "not_ready",
           service: SERVICE_NAME,
           timestamp: new Date().toISOString(),
         });
       }
     } catch (err) {
-      logger.error({ err }, 'Readiness check failed');
+      logger.error({ err }, "Readiness check failed");
       res.status(503).json({
-        status: 'error',
+        status: "error",
         service: SERVICE_NAME,
         timestamp: new Date().toISOString(),
       });
@@ -94,7 +94,7 @@ export function mountHealthRoutes(app: Express): void {
  */
 export async function startHealthServer(port: number): Promise<void> {
   if (server) {
-    logger.warn('Health server already running');
+    logger.warn("Health server already running");
     return;
   }
 
@@ -102,13 +102,13 @@ export async function startHealthServer(port: number): Promise<void> {
   mountHealthRoutes(app);
 
   return new Promise((resolve, reject) => {
-    server = app.listen(port, '0.0.0.0', () => {
-      logger.info({ port }, 'Health server started');
+    server = app.listen(port, "0.0.0.0", () => {
+      logger.info({ port }, "Health server started");
       resolve();
     });
 
-    server.on('error', (err) => {
-      logger.error({ err, port }, 'Health server error');
+    server.on("error", (err) => {
+      logger.error({ err, port }, "Health server error");
       reject(err);
     });
   });
@@ -123,11 +123,11 @@ export async function stopHealthServer(): Promise<void> {
   return new Promise((resolve, reject) => {
     server!.close((err) => {
       if (err) {
-        logger.error({ err }, 'Error stopping health server');
+        logger.error({ err }, "Error stopping health server");
         reject(err);
       } else {
         server = null;
-        logger.info('Health server stopped');
+        logger.info("Health server stopped");
         resolve();
       }
     });

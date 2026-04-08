@@ -113,6 +113,18 @@ export const CREATE_TABLES = [
   )`,
 
   /* ------------------------------------------------------------------ */
+  /*  cheater_flags – flagged issues for cheating / abuse                */
+  /* ------------------------------------------------------------------ */
+  `CREATE TABLE IF NOT EXISTS cheater_flags (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_number    INTEGER,
+    reason          TEXT    NOT NULL,
+    flagged_by      TEXT,
+    flagged_at      TEXT,
+    FOREIGN KEY (issue_number) REFERENCES bounties(issue_number)
+  )`,
+
+  /* ------------------------------------------------------------------ */
   /*  audit_log – immutable action audit trail                           */
   /* ------------------------------------------------------------------ */
   `CREATE TABLE IF NOT EXISTS audit_log (
@@ -130,30 +142,33 @@ export const CREATE_TABLES = [
 /** SQL statements that create secondary indexes. */
 export const CREATE_INDEXES = [
   // bounties
-  'CREATE INDEX IF NOT EXISTS idx_bounties_workspace   ON bounties(workspace_id)',
-  'CREATE INDEX IF NOT EXISTS idx_bounties_status      ON bounties(status)',
-  'CREATE INDEX IF NOT EXISTS idx_bounties_repo        ON bounties(repo)',
+  "CREATE INDEX IF NOT EXISTS idx_bounties_workspace   ON bounties(workspace_id)",
+  "CREATE INDEX IF NOT EXISTS idx_bounties_status      ON bounties(status)",
+  "CREATE INDEX IF NOT EXISTS idx_bounties_repo        ON bounties(repo)",
 
   // validation_results
-  'CREATE INDEX IF NOT EXISTS idx_vr_issue             ON validation_results(issue_number)',
-  'CREATE INDEX IF NOT EXISTS idx_vr_workspace         ON validation_results(workspace_id)',
+  "CREATE INDEX IF NOT EXISTS idx_vr_issue             ON validation_results(issue_number)",
+  "CREATE INDEX IF NOT EXISTS idx_vr_workspace         ON validation_results(workspace_id)",
 
   // requeue_records
-  'CREATE INDEX IF NOT EXISTS idx_requeue_issue        ON requeue_records(issue_number)',
-  'CREATE INDEX IF NOT EXISTS idx_requeue_status       ON requeue_records(status)',
+  "CREATE INDEX IF NOT EXISTS idx_requeue_issue        ON requeue_records(issue_number)",
+  "CREATE INDEX IF NOT EXISTS idx_requeue_status       ON requeue_records(status)",
 
   // spam_analysis
-  'CREATE INDEX IF NOT EXISTS idx_spam_issue           ON spam_analysis(issue_number)',
+  "CREATE INDEX IF NOT EXISTS idx_spam_issue           ON spam_analysis(issue_number)",
+
+  // cheater_flags
+  "CREATE INDEX IF NOT EXISTS idx_cheater_flags_issue  ON cheater_flags(issue_number)",
 
   // dead_letter
-  'CREATE INDEX IF NOT EXISTS idx_dl_bounty            ON dead_letter(bounty_id)',
+  "CREATE INDEX IF NOT EXISTS idx_dl_bounty            ON dead_letter(bounty_id)",
 
   // delivery_log
-  'CREATE INDEX IF NOT EXISTS idx_delivery_workspace   ON delivery_log(workspace_id)',
+  "CREATE INDEX IF NOT EXISTS idx_delivery_workspace   ON delivery_log(workspace_id)",
 
   // audit_log
-  'CREATE INDEX IF NOT EXISTS idx_audit_workspace      ON audit_log(workspace_id)',
-  'CREATE INDEX IF NOT EXISTS idx_audit_action         ON audit_log(action)',
+  "CREATE INDEX IF NOT EXISTS idx_audit_workspace      ON audit_log(workspace_id)",
+  "CREATE INDEX IF NOT EXISTS idx_audit_action         ON audit_log(action)",
 ] as const;
 
 /**

@@ -5,14 +5,14 @@
  * items, and supports recovery of dead-lettered bounties.
  */
 
-import { logger } from '../logger.js';
+import { logger } from "../logger.js";
 import {
   getBounty,
   getLatestValidation,
   getDeadLetterItems,
-} from '../db/index.js';
-import { getQueuePosition, enqueue } from '../queue/processor.js';
-import type { DeadLetterRow } from '../db/index.js';
+} from "../db/index.js";
+import { getQueuePosition, enqueue } from "../queue/processor.js";
+import type { DeadLetterRow } from "../db/index.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -69,15 +69,19 @@ export function getDeadLetterList(): DeadLetterRow[] {
  * @param id - Dead-letter record ID (bounty_id / issueNumber)
  * @returns Success/failure with optional error message
  */
-export function recoverDeadLetterItem(
-  id: number,
-): { success: boolean; error?: string } {
+export function recoverDeadLetterItem(id: number): {
+  success: boolean;
+  error?: string;
+} {
   // Find the dead-letter item — id here is the bounty_id (issueNumber)
   const items = getDeadLetterItems();
   const item = items.find((i) => i.id === id);
 
   if (!item) {
-    return { success: false, error: `Dead-letter item with id ${id} not found` };
+    return {
+      success: false,
+      error: `Dead-letter item with id ${id} not found`,
+    };
   }
 
   const bounty = getBounty(item.bounty_id);
@@ -91,14 +95,14 @@ export function recoverDeadLetterItem(
   // Re-enqueue
   enqueue({
     issueNumber: item.bounty_id,
-    workspaceId: bounty.workspace_id ?? '',
+    workspaceId: bounty.workspace_id ?? "",
     retryCount: 0,
     addedAt: new Date().toISOString(),
   });
 
   logger.info(
     { deadLetterId: id, issueNumber: item.bounty_id },
-    'Dead-letter item recovered and re-enqueued',
+    "Dead-letter item recovered and re-enqueued",
   );
 
   return { success: true };

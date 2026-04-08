@@ -6,11 +6,11 @@
  * Max tokens: 600
  */
 
-import { EVALUATOR_IDENTITY } from './identity.js';
+import { EVALUATOR_IDENTITY } from "./identity.js";
 
 export const DUPLICATE_ANALYSIS_PROMPT = {
-  id: 'bounty.duplicate-analysis',
-  model: 'gemini-3.1-pro-preview-customtools',
+  id: "bounty.duplicate-analysis",
+  model: "gemini-3.1-pro-preview-customtools",
   maxTokens: 600,
   temperature: 0.1,
 
@@ -46,14 +46,14 @@ Respond with a JSON object (no markdown fencing):
       `## Newer issue (candidate duplicate)`,
       `**#${ctx.newIssue.number}:** ${ctx.newIssue.title}`,
       ctx.newIssue.body.slice(0, 500),
-      '',
+      "",
       `## Older issue (original)`,
       `**#${ctx.oldIssue.number}:** ${ctx.oldIssue.title}`,
       ctx.oldIssue.body.slice(0, 500),
-      '',
+      "",
       `## Pre-computed similarity`,
       `Lexical (Jaccard): ${(ctx.lexicalSimilarity * 100).toFixed(0)}%`,
       `Semantic (cosine): ${(ctx.semanticSimilarity * 100).toFixed(0)}%`,
-    ].join('\n');
+    ].join("\n");
   },
 };

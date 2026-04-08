@@ -1,22 +1,18 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { createServer } from 'net';
-import {
-  isPortInUse,
-  checkPortConflicts,
-  getApiPort,
-} from './port-check.js';
+import { describe, it, expect, afterEach } from "vitest";
+import { createServer } from "net";
+import { isPortInUse, checkPortConflicts, getApiPort } from "./port-check.js";
 
-describe('port-check', () => {
-  describe('isPortInUse', () => {
-    it('returns false for an unused port', async () => {
+describe("port-check", () => {
+  describe("isPortInUse", () => {
+    it("returns false for an unused port", async () => {
       const result = await isPortInUse(54322);
       expect(result).toBe(false);
     });
 
-    it('returns true for a port in use', async () => {
+    it("returns true for a port in use", async () => {
       const server = createServer();
       const port = await new Promise<number>((resolve) => {
-        server.listen(0, '127.0.0.1', () => {
+        server.listen(0, "127.0.0.1", () => {
           resolve((server.address() as { port: number }).port);
         });
       });
@@ -28,8 +24,8 @@ describe('port-check', () => {
     });
   });
 
-  describe('checkPortConflicts', () => {
-    it('passes when all ports are free', async () => {
+  describe("checkPortConflicts", () => {
+    it("passes when all ports are free", async () => {
       // Skip this test if ports are already in use (e.g., services running)
       const apiPort = await isPortInUse(3235);
       if (apiPort) {
@@ -42,7 +38,7 @@ describe('port-check', () => {
     });
   });
 
-  describe('getApiPort', () => {
+  describe("getApiPort", () => {
     const originalPort = process.env.PORT;
 
     afterEach(() => {
@@ -53,13 +49,13 @@ describe('port-check', () => {
       }
     });
 
-    it('returns default port 3235 when not set', () => {
+    it("returns default port 3235 when not set", () => {
       delete process.env.PORT;
       expect(getApiPort()).toBe(3235);
     });
 
-    it('returns configured port from environment', () => {
-      process.env.PORT = '3237';
+    it("returns configured port from environment", () => {
+      process.env.PORT = "3237";
       expect(getApiPort()).toBe(3237);
     });
   });

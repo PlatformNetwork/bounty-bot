@@ -6,8 +6,8 @@
  * interactions.
  */
 
-import { GITHUB_TOKEN } from '../config.js';
-import { logger } from '../logger.js';
+import { GITHUB_TOKEN } from "../config.js";
+import { logger } from "../logger.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -46,7 +46,7 @@ export class GitHubApiError extends Error {
     public readonly endpoint: string,
   ) {
     super(message);
-    this.name = 'GitHubApiError';
+    this.name = "GitHubApiError";
   }
 }
 
@@ -64,8 +64,8 @@ let rateLimitResetAt = 0;
  * Update rate limit state from response headers.
  */
 function updateRateLimit(headers: Headers): void {
-  const remaining = headers.get('x-ratelimit-remaining');
-  const reset = headers.get('x-ratelimit-reset');
+  const remaining = headers.get("x-ratelimit-remaining");
+  const reset = headers.get("x-ratelimit-reset");
 
   if (remaining !== null) {
     rateLimitRemaining = parseInt(remaining, 10);
@@ -85,7 +85,7 @@ async function checkRateLimit(): Promise<void> {
   if (waitMs > 0 && waitMs < RATE_LIMIT_PAUSE_MS * 2) {
     logger.warn(
       { remaining: rateLimitRemaining, waitMs },
-      'GitHub rate limit low — pausing',
+      "GitHub rate limit low — pausing",
     );
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
@@ -95,7 +95,7 @@ async function checkRateLimit(): Promise<void> {
 /*  Core request helper                                                */
 /* ------------------------------------------------------------------ */
 
-const GITHUB_API = 'https://api.github.com';
+const GITHUB_API = "https://api.github.com";
 
 /**
  * Make an authenticated request to the GitHub REST API.
@@ -109,8 +109,8 @@ async function githubFetch<T>(
 
   const url = `${GITHUB_API}${path}`;
   const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
   };
 
   if (GITHUB_TOKEN) {
@@ -118,7 +118,7 @@ async function githubFetch<T>(
   }
 
   if (body !== undefined) {
-    headers['Content-Type'] = 'application/json';
+    headers["Content-Type"] = "application/json";
   }
 
   const response = await fetch(url, {
@@ -131,7 +131,7 @@ async function githubFetch<T>(
   updateRateLimit(response.headers);
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
+    const text = await response.text().catch(() => "");
     throw new GitHubApiError(
       `GitHub API ${method} ${path} returned ${response.status}: ${text}`,
       response.status,
@@ -160,7 +160,7 @@ export async function getIssue(
   issueNumber: number,
 ): Promise<GitHubIssue> {
   return githubFetch<GitHubIssue>(
-    'GET',
+    "GET",
     `/repos/${owner}/${repo}/issues/${issueNumber}`,
   );
 }
@@ -175,7 +175,7 @@ export async function addLabels(
   labels: string[],
 ): Promise<void> {
   await githubFetch<unknown>(
-    'POST',
+    "POST",
     `/repos/${owner}/${repo}/issues/${issueNumber}/labels`,
     { labels },
   );
@@ -192,7 +192,7 @@ export async function removeLabel(
 ): Promise<void> {
   try {
     await githubFetch<unknown>(
-      'DELETE',
+      "DELETE",
       `/repos/${owner}/${repo}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
     );
   } catch (err: unknown) {
@@ -214,7 +214,7 @@ export async function postComment(
   body: string,
 ): Promise<GitHubComment> {
   return githubFetch<GitHubComment>(
-    'POST',
+    "POST",
     `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
     { body },
   );
@@ -229,9 +229,9 @@ export async function closeIssue(
   issueNumber: number,
 ): Promise<void> {
   await githubFetch<unknown>(
-    'PATCH',
+    "PATCH",
     `/repos/${owner}/${repo}/issues/${issueNumber}`,
-    { state: 'closed' },
+    { state: "closed" },
   );
 }
 
@@ -244,9 +244,9 @@ export async function reopenIssue(
   issueNumber: number,
 ): Promise<void> {
   await githubFetch<unknown>(
-    'PATCH',
+    "PATCH",
     `/repos/${owner}/${repo}/issues/${issueNumber}`,
-    { state: 'open' },
+    { state: "open" },
   );
 }
 
@@ -259,7 +259,7 @@ export async function getIssueEvents(
   issueNumber: number,
 ): Promise<GitHubEvent[]> {
   return githubFetch<GitHubEvent[]>(
-    'GET',
+    "GET",
     `/repos/${owner}/${repo}/issues/${issueNumber}/events`,
   );
 }
@@ -277,19 +277,19 @@ export async function listRecentIssues(
   page?: number,
 ): Promise<GitHubIssue[]> {
   const params = new URLSearchParams({
-    state: 'all',
-    sort: 'updated',
-    direction: 'desc',
-    per_page: '100',
+    state: "all",
+    sort: "updated",
+    direction: "desc",
+    per_page: "100",
     page: String(page ?? 1),
   });
 
   if (since) {
-    params.set('since', since);
+    params.set("since", since);
   }
 
   return githubFetch<GitHubIssue[]>(
-    'GET',
+    "GET",
     `/repos/${owner}/${repo}/issues?${params.toString()}`,
   );
 }

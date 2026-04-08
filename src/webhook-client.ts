@@ -9,19 +9,19 @@
  * provides the transport and retry infrastructure.
  */
 
-import { logger } from './logger.js';
+import { logger } from "./logger.js";
 import {
   ATLAS_WEBHOOK_URL,
   WEBHOOK_MAX_RETRIES,
   WEBHOOK_RETRY_DELAY_MS,
-} from './config.js';
-import { buildSignedHeaders } from './hmac.js';
+} from "./config.js";
+import { buildSignedHeaders } from "./hmac.js";
 
 /** Supported webhook event types sent from bounty-bot to Atlas. */
 export type WebhookEventType =
-  | 'validation.completed'
-  | 'validation.failed'
-  | 'autonomy.deployed';
+  | "validation.completed"
+  | "validation.failed"
+  | "autonomy.deployed";
 
 /** Payload shape for webhook callbacks. */
 export interface WebhookPayload {
@@ -81,15 +81,15 @@ export async function sendWebhookCallback(
     try {
       logger.info(
         { event: payload.event, attempt, url: targetUrl },
-        'Sending webhook callback',
+        "Sending webhook callback",
       );
 
       const signedHeaders = buildSignedHeaders(body);
       const response = await fetch(targetUrl, {
-        method: 'POST',
+        method: "POST",
         headers: {
           ...signedHeaders,
-          'X-Webhook-Event': payload.event,
+          "X-Webhook-Event": payload.event,
         },
         body,
         signal: AbortSignal.timeout(10_000),
@@ -98,17 +98,25 @@ export async function sendWebhookCallback(
       if (response.ok) {
         logger.info(
           { event: payload.event, statusCode: response.status, attempt },
-          'Webhook callback delivered',
+          "Webhook callback delivered",
         );
-        return { success: true, statusCode: response.status, attempts: attempt };
+        return {
+          success: true,
+          statusCode: response.status,
+          attempts: attempt,
+        };
       }
 
       // Non-retryable client errors (4xx except 429)
-      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+      if (
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 429
+      ) {
         lastError = `HTTP ${response.status}: ${response.statusText}`;
         logger.warn(
           { event: payload.event, statusCode: response.status, attempt },
-          'Webhook callback rejected (non-retryable)',
+          "Webhook callback rejected (non-retryable)",
         );
         return {
           success: false,
@@ -122,14 +130,13 @@ export async function sendWebhookCallback(
       lastError = `HTTP ${response.status}: ${response.statusText}`;
       logger.warn(
         { event: payload.event, statusCode: response.status, attempt },
-        'Webhook callback failed (retryable)',
+        "Webhook callback failed (retryable)",
       );
     } catch (err: unknown) {
-      lastError =
-        err instanceof Error ? err.message : 'Unknown fetch error';
+      lastError = err instanceof Error ? err.message : "Unknown fetch error";
       logger.warn(
         { event: payload.event, attempt, err: lastError },
-        'Webhook callback error',
+        "Webhook callback error",
       );
     }
 
@@ -142,7 +149,7 @@ export async function sendWebhookCallback(
 
   logger.error(
     { event: payload.event, attempts: WEBHOOK_MAX_RETRIES, error: lastError },
-    'Webhook callback exhausted retries',
+    "Webhook callback exhausted retries",
   );
 
   return {

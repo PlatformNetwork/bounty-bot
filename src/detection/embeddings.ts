@@ -6,14 +6,14 @@
  * or when the API is unreachable.
  */
 
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
-import { logger } from '../logger.js';
+import { logger } from "../logger.js";
 import {
   OPENROUTER_API_KEY,
   OPENROUTER_BASE_URL,
   EMBEDDING_MODEL,
-} from '../config.js';
+} from "../config.js";
 
 /* ------------------------------------------------------------------ */
 /*  Client singleton                                                   */
@@ -75,7 +75,7 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  */
 export async function computeEmbedding(text: string): Promise<number[]> {
   if (!OPENROUTER_API_KEY) {
-    logger.warn('No OPENROUTER_API_KEY set — skipping embedding computation');
+    logger.warn("No OPENROUTER_API_KEY set — skipping embedding computation");
     return [];
   }
 
@@ -87,7 +87,7 @@ export async function computeEmbedding(text: string): Promise<number[]> {
     return response.data[0]?.embedding ?? [];
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ err: msg }, 'Embedding computation failed — falling back');
+    logger.warn({ err: msg }, "Embedding computation failed — falling back");
     return [];
   }
 }

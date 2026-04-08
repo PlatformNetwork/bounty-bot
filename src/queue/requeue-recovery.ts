@@ -6,10 +6,14 @@
  * Sends webhook callbacks to Atlas for completed requeues.
  */
 
-import { logger } from '../logger.js';
-import { getPendingRequeues, markRequeueCompleted, getBounty } from '../db/index.js';
-import { sendWebhookCallback, buildWebhookPayload } from '../webhook-client.js';
-import { getLatestValidation } from '../db/index.js';
+import { logger } from "../logger.js";
+import {
+  getPendingRequeues,
+  markRequeueCompleted,
+  getBounty,
+} from "../db/index.js";
+import { sendWebhookCallback, buildWebhookPayload } from "../webhook-client.js";
+import { getLatestValidation } from "../db/index.js";
 
 /* ------------------------------------------------------------------ */
 /*  State                                                              */
@@ -18,7 +22,7 @@ import { getLatestValidation } from '../db/index.js';
 let recoveryTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Terminal bounty statuses that indicate the requeue has been fully processed. */
-const TERMINAL_STATUSES = new Set(['completed', 'dead_lettered']);
+const TERMINAL_STATUSES = new Set(["completed", "dead_lettered"]);
 
 /* ------------------------------------------------------------------ */
 /*  Public API                                                         */
@@ -32,7 +36,10 @@ export async function checkCompletedRequeues(): Promise<void> {
   const pending = getPendingRequeues();
   if (pending.length === 0) return;
 
-  logger.info({ count: pending.length }, 'Requeue recovery: checking pending requeues');
+  logger.info(
+    { count: pending.length },
+    "Requeue recovery: checking pending requeues",
+  );
 
   for (const record of pending) {
     try {
@@ -40,7 +47,7 @@ export async function checkCompletedRequeues(): Promise<void> {
       if (!bounty) {
         logger.warn(
           { requeueId: record.id, issueNumber: record.issue_number },
-          'Requeue recovery: bounty not found for requeue record',
+          "Requeue recovery: bounty not found for requeue record",
         );
         continue;
       }
@@ -54,17 +61,21 @@ export async function checkCompletedRequeues(): Promise<void> {
       markRequeueCompleted(record.id, completedAt);
 
       logger.info(
-        { requeueId: record.id, issueNumber: record.issue_number, status: bounty.status },
-        'Requeue recovery: requeue resolved',
+        {
+          requeueId: record.id,
+          issueNumber: record.issue_number,
+          status: bounty.status,
+        },
+        "Requeue recovery: requeue resolved",
       );
 
       // Fetch latest validation for the webhook payload
       const validation = getLatestValidation(record.issue_number);
 
       // Send webhook callback to Atlas
-      const payload = buildWebhookPayload('validation.completed', {
+      const payload = buildWebhookPayload("validation.completed", {
         issue_number: record.issue_number,
-        verdict: validation?.verdict ?? bounty.verdict ?? 'unknown',
+        verdict: validation?.verdict ?? bounty.verdict ?? "unknown",
         rationale: validation?.rationale ?? null,
         workspace_id: bounty.workspace_id ?? null,
         requester_id: record.requester_id,
@@ -77,14 +88,14 @@ export async function checkCompletedRequeues(): Promise<void> {
       if (!result.success) {
         logger.warn(
           { requeueId: record.id, error: result.error },
-          'Requeue recovery: webhook callback failed (non-fatal)',
+          "Requeue recovery: webhook callback failed (non-fatal)",
         );
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       logger.error(
         { requeueId: record.id, issueNumber: record.issue_number, err: msg },
-        'Requeue recovery: failed to process record',
+        "Requeue recovery: failed to process record",
       );
     }
   }
@@ -97,16 +108,16 @@ export async function checkCompletedRequeues(): Promise<void> {
  */
 export function startRequeueRecovery(intervalMs = 30000): void {
   if (recoveryTimer) {
-    logger.warn('Requeue recovery: already running');
+    logger.warn("Requeue recovery: already running");
     return;
   }
 
-  logger.info({ intervalMs }, 'Requeue recovery: starting');
+  logger.info({ intervalMs }, "Requeue recovery: starting");
 
   recoveryTimer = setInterval(() => {
     checkCompletedRequeues().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.error({ err: msg }, 'Requeue recovery: iteration failed');
+      logger.error({ err: msg }, "Requeue recovery: iteration failed");
     });
   }, intervalMs);
 }
@@ -118,6 +129,6 @@ export function stopRequeueRecovery(): void {
   if (recoveryTimer) {
     clearInterval(recoveryTimer);
     recoveryTimer = null;
-    logger.info('Requeue recovery: stopped');
+    logger.info("Requeue recovery: stopped");
   }
 }

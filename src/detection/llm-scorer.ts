@@ -10,15 +10,15 @@
  * `deliver_verdict` with a structured recap and final decision.
  */
 
-import OpenAI from 'openai';
-import type { ChatCompletionTool } from 'openai/resources/index.js';
+import OpenAI from "openai";
+import type { ChatCompletionTool } from "openai/resources/index.js";
 
-import { logger } from '../logger.js';
+import { logger } from "../logger.js";
 import {
   OPENROUTER_API_KEY,
   OPENROUTER_BASE_URL,
   LLM_SCORING_MODEL,
-} from '../config.js';
+} from "../config.js";
 
 /* ------------------------------------------------------------------ */
 /*  Client singleton                                                   */
@@ -40,7 +40,7 @@ function getClient(): OpenAI {
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-export type LLMVerdict = 'valid' | 'invalid' | 'duplicate';
+export type LLMVerdict = "valid" | "invalid" | "duplicate";
 
 export interface LLMEvaluationResult {
   verdict: LLMVerdict;
@@ -60,42 +60,42 @@ export interface LLMScoreResult {
 /* ------------------------------------------------------------------ */
 
 const DELIVER_VERDICT_TOOL: ChatCompletionTool = {
-  type: 'function',
+  type: "function",
   function: {
-    name: 'deliver_verdict',
+    name: "deliver_verdict",
     description:
-      'Deliver the final verdict on a bug bounty issue after analysis. ' +
-      'You MUST call this function exactly once at the end of your analysis.',
+      "Deliver the final verdict on a bug bounty issue after analysis. " +
+      "You MUST call this function exactly once at the end of your analysis.",
     parameters: {
-      type: 'object',
-      required: ['reasoning', 'recap', 'verdict', 'confidence'],
+      type: "object",
+      required: ["reasoning", "recap", "verdict", "confidence"],
       properties: {
         reasoning: {
-          type: 'string',
+          type: "string",
           description:
-            'Step-by-step explanation of WHY you reached this verdict. ' +
-            'Cover: issue clarity, reproducibility evidence, media quality, ' +
-            'spam indicators, and similarity to known issues.',
+            "Step-by-step explanation of WHY you reached this verdict. " +
+            "Cover: issue clarity, reproducibility evidence, media quality, " +
+            "spam indicators, and similarity to known issues.",
         },
         recap: {
-          type: 'string',
+          type: "string",
           description:
-            'A short 2-3 sentence summary of the issue and your findings, ' +
-            'suitable for posting as a public comment.',
+            "A short 2-3 sentence summary of the issue and your findings, " +
+            "suitable for posting as a public comment.",
         },
         verdict: {
-          type: 'string',
-          enum: ['valid', 'invalid', 'duplicate'],
+          type: "string",
+          enum: ["valid", "invalid", "duplicate"],
           description:
             'Your final decision: "valid" if the issue is a genuine, ' +
             'well-documented bug; "invalid" if it is spam, low-effort, ' +
             'missing evidence, or not a real bug; "duplicate" if it ' +
-            'substantially overlaps an existing reported issue.',
+            "substantially overlaps an existing reported issue.",
         },
         confidence: {
-          type: 'number',
+          type: "number",
           description:
-            'How confident you are in this verdict, from 0.0 (uncertain) to 1.0 (certain).',
+            "How confident you are in this verdict, from 0.0 (uncertain) to 1.0 (certain).",
         },
       },
     },
@@ -106,7 +106,7 @@ const DELIVER_VERDICT_TOOL: ChatCompletionTool = {
 /*  System prompt — sourced from src/prompts/issue-evaluation.ts       */
 /* ------------------------------------------------------------------ */
 
-import { ISSUE_EVALUATION_PROMPT } from '../prompts/issue-evaluation.js';
+import { ISSUE_EVALUATION_PROMPT } from "../prompts/issue-evaluation.js";
 
 /* ------------------------------------------------------------------ */
 /*  Full issue evaluation (function calling)                           */
@@ -130,10 +130,10 @@ export async function evaluateIssue(issue: {
 }): Promise<LLMEvaluationResult> {
   if (!OPENROUTER_API_KEY) {
     return {
-      verdict: 'valid',
+      verdict: "valid",
       confidence: 0,
-      recap: 'LLM evaluation unavailable (no API key)',
-      reasoning: 'Skipped — no OPENROUTER_API_KEY configured',
+      recap: "LLM evaluation unavailable (no API key)",
+      reasoning: "Skipped — no OPENROUTER_API_KEY configured",
       available: false,
     };
   }
@@ -153,33 +153,41 @@ export async function evaluateIssue(issue: {
     const response = await getClient().chat.completions.create({
       model: LLM_SCORING_MODEL,
       messages: [
-        { role: 'system', content: ISSUE_EVALUATION_PROMPT.system },
-        { role: 'user', content: userMessage },
+        { role: "system", content: ISSUE_EVALUATION_PROMPT.system },
+        { role: "user", content: userMessage },
       ],
       tools: [DELIVER_VERDICT_TOOL],
-      tool_choice: { type: 'function', function: { name: 'deliver_verdict' } },
+      tool_choice: { type: "function", function: { name: "deliver_verdict" } },
       temperature: 0.1,
       max_tokens: 1500,
     });
 
     const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-    if (!toolCall || !('function' in toolCall) || toolCall.function.name !== 'deliver_verdict') {
-      logger.warn('LLM did not call deliver_verdict — falling back');
+    if (
+      !toolCall ||
+      !("function" in toolCall) ||
+      toolCall.function.name !== "deliver_verdict"
+    ) {
+      logger.warn("LLM did not call deliver_verdict — falling back");
       return {
-        verdict: 'valid',
+        verdict: "valid",
         confidence: 0,
-        recap: 'LLM did not produce a structured verdict',
-        reasoning: response.choices[0]?.message?.content ?? 'No response',
+        recap: "LLM did not produce a structured verdict",
+        reasoning: response.choices[0]?.message?.content ?? "No response",
         available: true,
       };
     }
 
-    const args = JSON.parse((toolCall as { function: { arguments: string } }).function.arguments);
-    const verdict = (['valid', 'invalid', 'duplicate'] as const).includes(args.verdict)
+    const args = JSON.parse(
+      (toolCall as { function: { arguments: string } }).function.arguments,
+    );
+    const verdict = (["valid", "invalid", "duplicate"] as const).includes(
+      args.verdict,
+    )
       ? (args.verdict as LLMVerdict)
-      : 'valid';
+      : "valid";
     const confidence =
-      typeof args.confidence === 'number'
+      typeof args.confidence === "number"
         ? Math.max(0, Math.min(1, args.confidence))
         : 0.5;
 
@@ -187,23 +195,23 @@ export async function evaluateIssue(issue: {
       {
         verdict,
         confidence: confidence.toFixed(2),
-        recap: (args.recap ?? '').slice(0, 100),
+        recap: (args.recap ?? "").slice(0, 100),
       },
-      'LLM evaluation complete',
+      "LLM evaluation complete",
     );
 
     return {
       verdict,
       confidence,
-      recap: typeof args.recap === 'string' ? args.recap : '',
-      reasoning: typeof args.reasoning === 'string' ? args.reasoning : '',
+      recap: typeof args.recap === "string" ? args.recap : "",
+      reasoning: typeof args.reasoning === "string" ? args.reasoning : "",
       available: true,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ err: msg }, 'LLM evaluation failed — using fallback');
+    logger.warn({ err: msg }, "LLM evaluation failed — using fallback");
     return {
-      verdict: 'valid',
+      verdict: "valid",
       confidence: 0,
       recap: `LLM evaluation failed: ${msg}`,
       reasoning: `Error: ${msg}`,
@@ -228,7 +236,8 @@ export async function scoreIssueValidity(issue: {
   if (!result.available) {
     return { score: -1, reasoning: result.reasoning };
   }
-  const score = result.verdict === 'valid' ? result.confidence : 1 - result.confidence;
+  const score =
+    result.verdict === "valid" ? result.confidence : 1 - result.confidence;
   return { score, reasoning: result.reasoning };
 }
 
@@ -251,7 +260,7 @@ export async function scoreSpamLikelihood(
   if (!result.available) {
     return { score: -1, reasoning: result.reasoning };
   }
-  const score = result.verdict === 'invalid' ? result.confidence : 0;
+  const score = result.verdict === "invalid" ? result.confidence : 0;
   return { score, reasoning: result.reasoning };
 }
 

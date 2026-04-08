@@ -7,11 +7,11 @@
  * Tool: deliver_verdict (required, called exactly once)
  */
 
-import { EVALUATOR_IDENTITY } from './identity.js';
+import { EVALUATOR_IDENTITY } from "./identity.js";
 
 export const ISSUE_EVALUATION_PROMPT = {
-  id: 'bounty.issue-evaluation',
-  model: 'gemini-3.1-pro-preview-customtools',
+  id: "bounty.issue-evaluation",
+  model: "gemini-3.1-pro-preview-customtools",
   maxTokens: 1500,
   temperature: 0.1,
 
@@ -51,31 +51,35 @@ Be thorough in reasoning but concise in recap (2-3 sentences max for recap).`,
     body: string;
     mediaUrls: string[];
     mediaAccessible?: boolean;
-    similarIssues?: Array<{ number: number; title: string; similarity: number }>;
+    similarIssues?: Array<{
+      number: number;
+      title: string;
+      similarity: number;
+    }>;
     spamScore?: number;
     issueNumber?: number;
     author?: string;
   }): string {
     const parts = [
       `# Issue to evaluate`,
-      ctx.issueNumber ? `**Number:** #${ctx.issueNumber}` : '',
+      ctx.issueNumber ? `**Number:** #${ctx.issueNumber}` : "",
       `**Title:** ${ctx.title}`,
-      ctx.author ? `**Author:** ${ctx.author}` : '',
-      '',
-      '**Body:**',
-      ctx.body || '(empty)',
-      '',
-      `**Media URLs:** ${ctx.mediaUrls.length > 0 ? ctx.mediaUrls.join(', ') : 'None'}`,
+      ctx.author ? `**Author:** ${ctx.author}` : "",
+      "",
+      "**Body:**",
+      ctx.body || "(empty)",
+      "",
+      `**Media URLs:** ${ctx.mediaUrls.length > 0 ? ctx.mediaUrls.join(", ") : "None"}`,
       ctx.mediaAccessible !== undefined
-        ? `**Media accessible:** ${ctx.mediaAccessible ? 'Yes' : 'No'}`
-        : '',
+        ? `**Media accessible:** ${ctx.mediaAccessible ? "Yes" : "No"}`
+        : "",
       ctx.spamScore !== undefined
         ? `**Pre-computed spam score:** ${ctx.spamScore.toFixed(2)} (higher = more likely spam)`
-        : '',
+        : "",
     ];
 
     if (ctx.similarIssues && ctx.similarIssues.length > 0) {
-      parts.push('', '## Similar existing issues');
+      parts.push("", "## Similar existing issues");
       for (const s of ctx.similarIssues) {
         parts.push(
           `- #${s.number}: "${s.title}" (similarity: ${(s.similarity * 100).toFixed(0)}%)`,
@@ -83,6 +87,6 @@ Be thorough in reasoning but concise in recap (2-3 sentences max for recap).`,
       }
     }
 
-    return parts.filter((line) => line !== undefined).join('\n');
+    return parts.filter((line) => line !== undefined).join("\n");
   },
 };

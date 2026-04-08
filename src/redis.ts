@@ -5,9 +5,9 @@
  * atomic lock release/extend operations.
  */
 
-import { Redis } from 'ioredis';
-import { logger } from './logger.js';
-import { REDIS_URL } from './config.js';
+import { Redis } from "ioredis";
+import { logger } from "./logger.js";
+import { REDIS_URL } from "./config.js";
 
 let client: Redis | null = null;
 
@@ -53,12 +53,12 @@ export async function initRedis(url?: string): Promise<Redis> {
     lazyConnect: true,
   });
 
-  client.on('error', (err: Error) => {
-    logger.error({ err }, 'Redis connection error');
+  client.on("error", (err: Error) => {
+    logger.error({ err }, "Redis connection error");
   });
 
-  client.on('connect', () => {
-    logger.info('Redis connected');
+  client.on("connect", () => {
+    logger.info("Redis connected");
   });
 
   await client.connect();
@@ -72,7 +72,7 @@ export async function initRedis(url?: string): Promise<Redis> {
  */
 export function getRedis(): Redis {
   if (!client) {
-    throw new Error('Redis not initialized - call initRedis() first');
+    throw new Error("Redis not initialized - call initRedis() first");
   }
   return client;
 }
@@ -91,8 +91,8 @@ export async function acquireLock(
   ttlSeconds: number = 300,
 ): Promise<boolean> {
   const redis = getRedis();
-  const result = await redis.set(key, owner, 'EX', ttlSeconds, 'NX');
-  return result === 'OK';
+  const result = await redis.set(key, owner, "EX", ttlSeconds, "NX");
+  return result === "OK";
 }
 
 /**
@@ -152,8 +152,8 @@ export async function setIdempotencyKey(
   ttlSeconds: number = 3600,
 ): Promise<boolean> {
   const redis = getRedis();
-  const result = await redis.set(key, value, 'EX', ttlSeconds, 'NX');
-  return result === 'OK';
+  const result = await redis.set(key, value, "EX", ttlSeconds, "NX");
+  return result === "OK";
 }
 
 /**
@@ -162,9 +162,7 @@ export async function setIdempotencyKey(
  * @param key - Idempotency key to look up
  * @returns The stored value, or null if not found
  */
-export async function checkIdempotencyKey(
-  key: string,
-): Promise<string | null> {
+export async function checkIdempotencyKey(key: string): Promise<string | null> {
   const redis = getRedis();
   return redis.get(key);
 }
@@ -176,6 +174,6 @@ export async function disconnectRedis(): Promise<void> {
   if (client) {
     await client.quit();
     client = null;
-    logger.info('Redis disconnected');
+    logger.info("Redis disconnected");
   }
 }

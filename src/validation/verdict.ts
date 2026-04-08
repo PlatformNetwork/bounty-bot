@@ -6,21 +6,25 @@
  * a webhook callback to Atlas, and logs to the audit trail.
  */
 
-import { logger } from '../logger.js';
-import { insertValidationResult, insertAuditLog, updateBountyStatus } from '../db/index.js';
-import { sendWebhookCallback, buildWebhookPayload } from '../webhook-client.js';
+import { logger } from "../logger.js";
+import {
+  insertValidationResult,
+  insertAuditLog,
+  updateBountyStatus,
+} from "../db/index.js";
+import { sendWebhookCallback, buildWebhookPayload } from "../webhook-client.js";
 import {
   applyValidVerdict,
   applyInvalidVerdict,
   applyDuplicateVerdict,
-} from '../github/mutations.js';
+} from "../github/mutations.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
 export interface VerdictResult {
-  verdict: 'valid' | 'invalid' | 'duplicate';
+  verdict: "valid" | "invalid" | "duplicate";
   rationale: string;
   evidence?: object;
   checklist?: string[];
@@ -44,12 +48,14 @@ export function formatVerdictComment(result: VerdictResult): string {
 
   // Verdict header
   const emoji =
-    result.verdict === 'valid'
-      ? '✅'
-      : result.verdict === 'invalid'
-        ? '❌'
-        : '🔁';
-  sections.push(`## ${emoji} Verdict: ${result.verdict.charAt(0).toUpperCase() + result.verdict.slice(1)}`);
+    result.verdict === "valid"
+      ? "✅"
+      : result.verdict === "invalid"
+        ? "❌"
+        : "🔁";
+  sections.push(
+    `## ${emoji} Verdict: ${result.verdict.charAt(0).toUpperCase() + result.verdict.slice(1)}`,
+  );
 
   // Rationale
   sections.push(`### Rationale\n\n${result.rationale}`);
@@ -63,7 +69,7 @@ export function formatVerdictComment(result: VerdictResult): string {
 
   // Checklist
   if (result.checklist && result.checklist.length > 0) {
-    const items = result.checklist.map((c) => `- [ ] ${c}`).join('\n');
+    const items = result.checklist.map((c) => `- [ ] ${c}`).join("\n");
     sections.push(`### Checklist\n\n${items}`);
   }
 
@@ -76,9 +82,9 @@ export function formatVerdictComment(result: VerdictResult): string {
   if (result.mediaCheck) {
     const status = result.mediaCheck.hasMedia
       ? result.mediaCheck.accessible
-        ? '✅ Media found and accessible'
-        : '⚠️ Media found but not accessible'
-      : 'ℹ️ No media attached';
+        ? "✅ Media found and accessible"
+        : "⚠️ Media found but not accessible"
+      : "ℹ️ No media attached";
     sections.push(`### Media Check\n\n${status}`);
   }
 
@@ -87,7 +93,7 @@ export function formatVerdictComment(result: VerdictResult): string {
     sections.push(`### Spam Score\n\n${result.spamScore}/100`);
   }
 
-  return sections.join('\n\n');
+  return sections.join("\n\n");
 }
 
 /* ------------------------------------------------------------------ */
@@ -107,20 +113,21 @@ export async function publishVerdict(
   result: VerdictResult,
   workspaceId?: string,
 ): Promise<void> {
-  logger.info(
-    { issueNumber, verdict: result.verdict },
-    'Publishing verdict',
-  );
+  logger.info({ issueNumber, verdict: result.verdict }, "Publishing verdict");
 
   // 1. Apply GitHub mutations
   switch (result.verdict) {
-    case 'valid':
+    case "valid":
       await applyValidVerdict(issueNumber, result.rationale, result.evidence);
       break;
-    case 'invalid':
-      await applyInvalidVerdict(issueNumber, result.rationale, result.checklist);
+    case "invalid":
+      await applyInvalidVerdict(
+        issueNumber,
+        result.rationale,
+        result.checklist,
+      );
       break;
-    case 'duplicate':
+    case "duplicate":
       if (result.duplicateOf === undefined) {
         throw new Error(
           `Duplicate verdict for #${issueNumber} missing duplicateOf field`,
@@ -149,10 +156,10 @@ export async function publishVerdict(
   });
 
   // 3. Update bounty status in DB
-  updateBountyStatus(issueNumber, 'completed', result.verdict);
+  updateBountyStatus(issueNumber, "completed", result.verdict);
 
   // 4. Send webhook callback to Atlas
-  const webhookPayload = buildWebhookPayload('validation.completed', {
+  const webhookPayload = buildWebhookPayload("validation.completed", {
     issue_number: issueNumber,
     verdict: result.verdict,
     rationale: result.rationale,
@@ -164,7 +171,7 @@ export async function publishVerdict(
   if (!webhookResult.success) {
     logger.warn(
       { issueNumber, error: webhookResult.error },
-      'Webhook callback to Atlas failed (non-fatal)',
+      "Webhook callback to Atlas failed (non-fatal)",
     );
   }
 
@@ -172,7 +179,7 @@ export async function publishVerdict(
   insertAuditLog({
     workspace_id: workspaceId,
     action: `verdict.${result.verdict}`,
-    actor: 'bounty-bot',
+    actor: "bounty-bot",
     details: JSON.stringify({
       issue_number: issueNumber,
       verdict: result.verdict,
@@ -183,6 +190,6 @@ export async function publishVerdict(
 
   logger.info(
     { issueNumber, verdict: result.verdict },
-    'Verdict published successfully',
+    "Verdict published successfully",
   );
 }

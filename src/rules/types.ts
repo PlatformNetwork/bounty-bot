@@ -8,20 +8,20 @@
 
 /** Categories that rules can belong to. */
 export type RuleCategory =
-  | 'validity'
-  | 'spam'
-  | 'duplicate'
-  | 'media'
-  | 'edit-history'
-  | 'scoring'
-  | 'content';
+  | "validity"
+  | "spam"
+  | "duplicate"
+  | "media"
+  | "edit-history"
+  | "scoring"
+  | "content";
 
 /** Severity determines how a rule violation affects the verdict. */
 export type RuleSeverity =
-  | 'reject'    // Immediately invalidate
-  | 'penalize'  // Add to spam/penalty score
-  | 'flag'      // Warn but don't change verdict
-  | 'require';  // Must pass or issue is invalid
+  | "reject" // Immediately invalidate
+  | "penalize" // Add to spam/penalty score
+  | "flag" // Warn but don't change verdict
+  | "require"; // Must pass or issue is invalid
 
 /* ------------------------------------------------------------------ */
 /*  Code Rules — executed programmatically in the pipeline             */
@@ -62,7 +62,7 @@ export interface CodeRule {
 /* ------------------------------------------------------------------ */
 
 /** Priority for ordering LLM rules in the prompt. */
-export type LLMRulePriority = 'critical' | 'high' | 'normal' | 'low';
+export type LLMRulePriority = "critical" | "high" | "normal" | "low";
 
 /** An LLM rule is a natural-language instruction for the model. Loaded from rules/llm/. */
 export interface LLMRule {
@@ -73,7 +73,7 @@ export interface LLMRule {
   description: string;
 
   /** Category for grouping in the prompt. */
-  category: RuleCategory | 'evaluation' | 'tone' | 'output-format';
+  category: RuleCategory | "evaluation" | "tone" | "output-format";
 
   /** Priority determines ordering: critical rules appear first. */
   priority: LLMRulePriority;

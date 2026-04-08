@@ -6,10 +6,15 @@
  * and manages the intake pipeline with Redis locking and idempotency.
  */
 
-import { ISSUE_FLOOR, TARGET_REPO } from '../config.js';
-import { logger } from '../logger.js';
-import { getBounty, upsertBounty } from '../db/index.js';
-import { acquireLock, releaseLock, setIdempotencyKey, checkIdempotencyKey } from '../redis.js';
+import { ISSUE_FLOOR, TARGET_REPO } from "../config.js";
+import { logger } from "../logger.js";
+import { getBounty, upsertBounty } from "../db/index.js";
+import {
+  acquireLock,
+  releaseLock,
+  setIdempotencyKey,
+  checkIdempotencyKey,
+} from "../redis.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -78,15 +83,15 @@ export function normalizeIssue(
   const issue = (payload.issue ?? payload) as Record<string, unknown>;
   const user = issue.user as Record<string, unknown> | null;
   const labels = issue.labels as Array<Record<string, unknown>> | undefined;
-  const body = (issue.body as string) ?? '';
+  const body = (issue.body as string) ?? "";
 
   return {
     issueNumber: issue.number as number,
-    title: (issue.title as string) ?? '',
+    title: (issue.title as string) ?? "",
     body,
-    author: (user?.login as string) ?? 'unknown',
+    author: (user?.login as string) ?? "unknown",
     createdAt: (issue.created_at as string) ?? new Date().toISOString(),
-    labels: (labels ?? []).map((l) => (l.name as string) ?? ''),
+    labels: (labels ?? []).map((l) => (l.name as string) ?? ""),
     mediaUrls: extractMediaUrls(body),
     repo: TARGET_REPO,
   };
@@ -97,10 +102,10 @@ export function normalizeIssue(
 /* ------------------------------------------------------------------ */
 
 /** Labels that indicate an issue is in a terminal state. */
-const TERMINAL_LABELS = new Set(['valid', 'invalid', 'duplicate']);
+const TERMINAL_LABELS = new Set(["valid", "invalid", "duplicate"]);
 
 /** DB statuses that indicate an issue is in a terminal state. */
-const TERMINAL_STATUSES = new Set(['completed', 'dead_lettered']);
+const TERMINAL_STATUSES = new Set(["completed", "dead_lettered"]);
 
 /**
  * Determine whether an issue should be processed.
@@ -110,7 +115,10 @@ const TERMINAL_STATUSES = new Set(['completed', 'dead_lettered']);
  */
 export function shouldProcess(issue: NormalizedIssue): ProcessResult {
   if (issue.issueNumber < ISSUE_FLOOR) {
-    return { process: false, reason: `Issue #${issue.issueNumber} below floor (${ISSUE_FLOOR})` };
+    return {
+      process: false,
+      reason: `Issue #${issue.issueNumber} below floor (${ISSUE_FLOOR})`,
+    };
   }
 
   for (const label of issue.labels) {
@@ -138,7 +146,7 @@ export function shouldProcess(issue: NormalizedIssue): ProcessResult {
 /* ------------------------------------------------------------------ */
 
 const LOCK_TTL_SECONDS = 60;
-const LOCK_OWNER = 'intake';
+const LOCK_OWNER = "intake";
 
 /**
  * Process an issue through the intake pipeline.
@@ -156,9 +164,9 @@ export async function processIntake(
   if (!locked) {
     logger.info(
       { issueNumber: issue.issueNumber },
-      'Intake: could not acquire lock (already being processed)',
+      "Intake: could not acquire lock (already being processed)",
     );
-    return { queued: false, reason: 'Lock held by another process' };
+    return { queued: false, reason: "Lock held by another process" };
   }
 
   try {
@@ -166,9 +174,9 @@ export async function processIntake(
     if (existing) {
       logger.info(
         { issueNumber: issue.issueNumber },
-        'Intake: idempotency key exists (already ingested)',
+        "Intake: idempotency key exists (already ingested)",
       );
-      return { queued: false, reason: 'Already ingested (idempotency)' };
+      return { queued: false, reason: "Already ingested (idempotency)" };
     }
 
     upsertBounty({
@@ -178,19 +186,15 @@ export async function processIntake(
       body: issue.body,
       author: issue.author,
       created_at: issue.createdAt,
-      labels: issue.labels.join(','),
-      status: 'pending',
+      labels: issue.labels.join(","),
+      status: "pending",
     });
 
-    await setIdempotencyKey(
-      idempotencyKey,
-      new Date().toISOString(),
-      3600,
-    );
+    await setIdempotencyKey(idempotencyKey, new Date().toISOString(), 3600);
 
     logger.info(
       { issueNumber: issue.issueNumber },
-      'Intake: issue queued for validation',
+      "Intake: issue queued for validation",
     );
 
     return { queued: true };

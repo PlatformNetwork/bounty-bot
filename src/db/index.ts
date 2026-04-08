@@ -8,12 +8,12 @@
  * consumers can `import { upsertBounty } from './db/index.js'`.
  */
 
-import Database from 'better-sqlite3';
-import type { Database as DatabaseType } from 'better-sqlite3';
+import Database from "better-sqlite3";
+import type { Database as DatabaseType } from "better-sqlite3";
 
-import { logger } from '../logger.js';
-import { SQLITE_PATH } from '../config.js';
-import { CREATE_TABLES, CREATE_INDEXES, MIGRATIONS } from './schema.js';
+import { logger } from "../logger.js";
+import { SQLITE_PATH } from "../config.js";
+import { CREATE_TABLES, CREATE_INDEXES, MIGRATIONS } from "./schema.js";
 
 /* ------------------------------------------------------------------ */
 /*  Singleton instance                                                 */
@@ -40,13 +40,13 @@ function now(): string {
 export function initBountyDb(): DatabaseType {
   if (db) return db;
 
-  logger.info({ path: SQLITE_PATH }, 'Opening SQLite database');
+  logger.info({ path: SQLITE_PATH }, "Opening SQLite database");
 
   db = new Database(SQLITE_PATH);
 
   // Enable WAL mode for better concurrent read performance
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
 
   // Create tables
   for (const sql of CREATE_TABLES) {
@@ -64,16 +64,16 @@ export function initBountyDb(): DatabaseType {
       db.exec(migration);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('duplicate column name')) {
+      if (msg.includes("duplicate column name")) {
         // Expected when column already exists – skip silently
         continue;
       }
-      logger.warn({ err: msg, migration }, 'Migration failed');
+      logger.warn({ err: msg, migration }, "Migration failed");
       throw err;
     }
   }
 
-  logger.info('SQLite schema initialised');
+  logger.info("SQLite schema initialised");
   return db;
 }
 
@@ -84,7 +84,7 @@ export function initBountyDb(): DatabaseType {
  */
 export function getBountyDb(): DatabaseType {
   if (!db) {
-    throw new Error('Database not initialised – call initBountyDb() first');
+    throw new Error("Database not initialised – call initBountyDb() first");
   }
   return db;
 }
@@ -281,7 +281,7 @@ export function upsertBounty(data: BountyData): void {
     body: data.body ?? null,
     author: data.author ?? null,
     created_at: data.created_at ?? ts,
-    status: data.status ?? 'pending',
+    status: data.status ?? "pending",
     verdict: data.verdict ?? null,
     labels: data.labels ?? null,
     locked_by: data.locked_by ?? null,
@@ -298,19 +298,21 @@ export function upsertBounty(data: BountyData): void {
  */
 export function getBounty(issueNumber: number): BountyRow | undefined {
   const d = getBountyDb();
-  return d.prepare('SELECT * FROM bounties WHERE issue_number = ?').get(issueNumber) as
-    | BountyRow
-    | undefined;
+  return d
+    .prepare("SELECT * FROM bounties WHERE issue_number = ?")
+    .get(issueNumber) as BountyRow | undefined;
 }
 
 /**
  * Retrieve a bounty by its workspace ID.
  */
-export function getBountyByWorkspace(workspaceId: string): BountyRow | undefined {
+export function getBountyByWorkspace(
+  workspaceId: string,
+): BountyRow | undefined {
   const d = getBountyDb();
-  return d.prepare('SELECT * FROM bounties WHERE workspace_id = ?').get(workspaceId) as
-    | BountyRow
-    | undefined;
+  return d
+    .prepare("SELECT * FROM bounties WHERE workspace_id = ?")
+    .get(workspaceId) as BountyRow | undefined;
 }
 
 /**
@@ -326,11 +328,11 @@ export function updateBountyStatus(
 
   if (verdict !== undefined) {
     d.prepare(
-      'UPDATE bounties SET status = ?, verdict = ?, updated_at = ? WHERE issue_number = ?',
+      "UPDATE bounties SET status = ?, verdict = ?, updated_at = ? WHERE issue_number = ?",
     ).run(status, verdict, ts, issueNumber);
   } else {
     d.prepare(
-      'UPDATE bounties SET status = ?, updated_at = ? WHERE issue_number = ?',
+      "UPDATE bounties SET status = ?, updated_at = ? WHERE issue_number = ?",
     ).run(status, ts, issueNumber);
   }
 }
@@ -352,7 +354,7 @@ export function lockBounty(
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
 
   d.prepare(
-    'UPDATE bounties SET locked_by = ?, locked_at = ?, lock_expires_at = ?, updated_at = ? WHERE issue_number = ?',
+    "UPDATE bounties SET locked_by = ?, locked_at = ?, lock_expires_at = ?, updated_at = ? WHERE issue_number = ?",
   ).run(lockedBy, ts, expiresAt, ts, issueNumber);
 }
 
@@ -364,7 +366,7 @@ export function unlockBounty(issueNumber: number): void {
   const ts = now();
 
   d.prepare(
-    'UPDATE bounties SET locked_by = NULL, locked_at = NULL, lock_expires_at = NULL, updated_at = ? WHERE issue_number = ?',
+    "UPDATE bounties SET locked_by = NULL, locked_at = NULL, lock_expires_at = NULL, updated_at = ? WHERE issue_number = ?",
   ).run(ts, issueNumber);
 }
 
@@ -373,7 +375,9 @@ export function unlockBounty(issueNumber: number): void {
  */
 export function getPendingBounties(): BountyRow[] {
   const d = getBountyDb();
-  return d.prepare("SELECT * FROM bounties WHERE status = 'pending'").all() as BountyRow[];
+  return d
+    .prepare("SELECT * FROM bounties WHERE status = 'pending'")
+    .all() as BountyRow[];
 }
 
 /**
@@ -381,7 +385,9 @@ export function getPendingBounties(): BountyRow[] {
  */
 export function getInProgressBounties(): BountyRow[] {
   const d = getBountyDb();
-  return d.prepare("SELECT * FROM bounties WHERE status = 'in_progress'").all() as BountyRow[];
+  return d
+    .prepare("SELECT * FROM bounties WHERE status = 'in_progress'")
+    .all() as BountyRow[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -395,12 +401,14 @@ export function insertValidationResult(data: ValidationResultData): void {
   const d = getBountyDb();
   const ts = now();
 
-  d.prepare(`
+  d.prepare(
+    `
     INSERT INTO validation_results (
       issue_number, workspace_id, verdict, rationale, evidence,
       spam_score, duplicate_of, media_check, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     data.issue_number,
     data.workspace_id ?? null,
     data.verdict,
@@ -416,11 +424,13 @@ export function insertValidationResult(data: ValidationResultData): void {
 /**
  * Get the most recent validation result for an issue.
  */
-export function getLatestValidation(issueNumber: number): ValidationResultRow | undefined {
+export function getLatestValidation(
+  issueNumber: number,
+): ValidationResultRow | undefined {
   const d = getBountyDb();
   return d
     .prepare(
-      'SELECT * FROM validation_results WHERE issue_number = ? ORDER BY id DESC LIMIT 1',
+      "SELECT * FROM validation_results WHERE issue_number = ? ORDER BY id DESC LIMIT 1",
     )
     .get(issueNumber) as ValidationResultRow | undefined;
 }
@@ -436,21 +446,30 @@ export function insertRequeueRecord(data: RequeueRecordData): void {
   const d = getBountyDb();
   const ts = now();
 
-  d.prepare(`
+  d.prepare(
+    `
     INSERT INTO requeue_records (
       issue_number, requester_id, requester_context, status, requeued_at
     ) VALUES (?, ?, ?, 'pending', ?)
-  `).run(data.issue_number, data.requester_id ?? null, data.requester_context ?? null, ts);
+  `,
+  ).run(
+    data.issue_number,
+    data.requester_id ?? null,
+    data.requester_context ?? null,
+    ts,
+  );
 }
 
 /**
  * Get the latest requeue record for an issue.
  */
-export function getRequeueRecord(issueNumber: number): RequeueRecordRow | undefined {
+export function getRequeueRecord(
+  issueNumber: number,
+): RequeueRecordRow | undefined {
   const d = getBountyDb();
   return d
     .prepare(
-      'SELECT * FROM requeue_records WHERE issue_number = ? ORDER BY id DESC LIMIT 1',
+      "SELECT * FROM requeue_records WHERE issue_number = ? ORDER BY id DESC LIMIT 1",
     )
     .get(issueNumber) as RequeueRecordRow | undefined;
 }
@@ -463,7 +482,7 @@ export function updateRequeueStatus(id: number, status: string): void {
   const ts = now();
 
   d.prepare(
-    'UPDATE requeue_records SET status = ?, completed_at = ? WHERE id = ?',
+    "UPDATE requeue_records SET status = ?, completed_at = ? WHERE id = ?",
   ).run(status, ts, id);
 }
 
@@ -473,7 +492,9 @@ export function updateRequeueStatus(id: number, status: string): void {
 export function getPendingRequeues(): RequeueRecordRow[] {
   const d = getBountyDb();
   return d
-    .prepare("SELECT * FROM requeue_records WHERE status = 'pending' ORDER BY id")
+    .prepare(
+      "SELECT * FROM requeue_records WHERE status = 'pending' ORDER BY id",
+    )
     .all() as RequeueRecordRow[];
 }
 
@@ -483,8 +504,8 @@ export function getPendingRequeues(): RequeueRecordRow[] {
 export function markRequeueCompleted(id: number, completedAt: string): void {
   const d = getBountyDb();
   d.prepare(
-    'UPDATE requeue_records SET status = ?, completed_at = ?, callback_sent = 1 WHERE id = ?',
-  ).run('resolved', completedAt, id);
+    "UPDATE requeue_records SET status = ?, completed_at = ?, callback_sent = 1 WHERE id = ?",
+  ).run("resolved", completedAt, id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -498,12 +519,14 @@ export function insertSpamAnalysis(data: SpamAnalysisData): void {
   const d = getBountyDb();
   const ts = now();
 
-  d.prepare(`
+  d.prepare(
+    `
     INSERT INTO spam_analysis (
       issue_number, template_score, burst_score, parity_score,
       overall_score, details, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     data.issue_number,
     data.template_score ?? null,
     data.burst_score ?? null,
@@ -525,7 +548,8 @@ export function upsertEmbedding(data: EmbeddingData): void {
   const d = getBountyDb();
   const ts = now();
 
-  d.prepare(`
+  d.prepare(
+    `
     INSERT INTO embeddings (
       issue_number, title_fingerprint, body_fingerprint, embedding_vector, created_at
     ) VALUES (?, ?, ?, ?, ?)
@@ -534,7 +558,8 @@ export function upsertEmbedding(data: EmbeddingData): void {
       body_fingerprint  = COALESCE(?, body_fingerprint),
       embedding_vector  = COALESCE(?, embedding_vector),
       created_at        = ?
-  `).run(
+  `,
+  ).run(
     data.issue_number,
     data.title_fingerprint ?? null,
     data.body_fingerprint ?? null,
@@ -552,9 +577,9 @@ export function upsertEmbedding(data: EmbeddingData): void {
  */
 export function getEmbedding(issueNumber: number): EmbeddingRow | undefined {
   const d = getBountyDb();
-  return d.prepare('SELECT * FROM embeddings WHERE issue_number = ?').get(issueNumber) as
-    | EmbeddingRow
-    | undefined;
+  return d
+    .prepare("SELECT * FROM embeddings WHERE issue_number = ?")
+    .get(issueNumber) as EmbeddingRow | undefined;
 }
 
 /**
@@ -562,7 +587,7 @@ export function getEmbedding(issueNumber: number): EmbeddingRow | undefined {
  */
 export function getAllEmbeddings(): EmbeddingRow[] {
   const d = getBountyDb();
-  return d.prepare('SELECT * FROM embeddings').all() as EmbeddingRow[];
+  return d.prepare("SELECT * FROM embeddings").all() as EmbeddingRow[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -576,11 +601,13 @@ export function insertDeadLetter(data: DeadLetterData): void {
   const d = getBountyDb();
   const ts = now();
 
-  d.prepare(`
+  d.prepare(
+    `
     INSERT INTO dead_letter (
       bounty_id, failure_cause, last_attempt, metadata, retry_count, created_at
     ) VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     data.bounty_id,
     data.failure_cause ?? null,
     data.last_attempt ?? null,
@@ -595,7 +622,9 @@ export function insertDeadLetter(data: DeadLetterData): void {
  */
 export function getDeadLetterItems(): DeadLetterRow[] {
   const d = getBountyDb();
-  return d.prepare('SELECT * FROM dead_letter ORDER BY id DESC').all() as DeadLetterRow[];
+  return d
+    .prepare("SELECT * FROM dead_letter ORDER BY id DESC")
+    .all() as DeadLetterRow[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -609,11 +638,13 @@ export function insertAuditLog(data: AuditLogData): void {
   const d = getBountyDb();
   const ts = now();
 
-  d.prepare(`
+  d.prepare(
+    `
     INSERT INTO audit_log (
       workspace_id, action, actor, details, github_ref, discord_ref, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  `,
+  ).run(
     data.workspace_id ?? null,
     data.action,
     data.actor ?? null,
@@ -635,10 +666,12 @@ export function logDelivery(workspaceId: string, window: string): void {
   const d = getBountyDb();
   const ts = now();
 
-  d.prepare(`
+  d.prepare(
+    `
     INSERT OR IGNORE INTO delivery_log (workspace_id, digest_window, delivered_at)
     VALUES (?, ?, ?)
-  `).run(workspaceId, window, ts);
+  `,
+  ).run(workspaceId, window, ts);
 }
 
 /**
@@ -648,7 +681,7 @@ export function hasDelivered(workspaceId: string, window: string): boolean {
   const d = getBountyDb();
   const row = d
     .prepare(
-      'SELECT 1 FROM delivery_log WHERE workspace_id = ? AND digest_window = ?',
+      "SELECT 1 FROM delivery_log WHERE workspace_id = ? AND digest_window = ?",
     )
     .get(workspaceId, window);
   return row !== undefined;

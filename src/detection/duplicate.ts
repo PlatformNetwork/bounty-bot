@@ -6,16 +6,16 @@
  * detect duplicate submissions.
  */
 
-import { createHash } from 'crypto';
+import { createHash } from "crypto";
 
-import { logger } from '../logger.js';
-import { upsertEmbedding, getAllEmbeddings } from '../db/index.js';
-import { ISSUE_FLOOR } from '../config.js';
+import { logger } from "../logger.js";
+import { upsertEmbedding, getAllEmbeddings } from "../db/index.js";
+import { ISSUE_FLOOR } from "../config.js";
 import {
   computeEmbedding,
   cosineSimilarity,
   isEmbeddingAvailable,
-} from './embeddings.js';
+} from "./embeddings.js";
 
 /* ------------------------------------------------------------------ */
 /*  Config                                                             */
@@ -23,7 +23,7 @@ import {
 
 /** Similarity threshold above which an issue is flagged as duplicate. */
 export const DUPLICATE_THRESHOLD = parseFloat(
-  process.env.DUPLICATE_THRESHOLD || '0.75',
+  process.env.DUPLICATE_THRESHOLD || "0.75",
 );
 
 /* ------------------------------------------------------------------ */
@@ -41,17 +41,105 @@ export interface DuplicateResult {
 /* ------------------------------------------------------------------ */
 
 const STOP_WORDS = new Set([
-  'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-  'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been',
-  'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-  'could', 'should', 'may', 'might', 'shall', 'can', 'need', 'must',
-  'it', 'its', 'this', 'that', 'these', 'those', 'i', 'me', 'my', 'we',
-  'our', 'you', 'your', 'he', 'she', 'they', 'them', 'their', 'what',
-  'which', 'who', 'whom', 'when', 'where', 'how', 'not', 'no', 'nor',
-  'if', 'then', 'than', 'so', 'as', 'up', 'out', 'about', 'into',
-  'through', 'during', 'before', 'after', 'above', 'below', 'between',
-  'same', 'each', 'every', 'all', 'both', 'few', 'more', 'most', 'other',
-  'some', 'such', 'only', 'own', 'just', 'also', 'very', 'too',
+  "a",
+  "an",
+  "the",
+  "and",
+  "or",
+  "but",
+  "in",
+  "on",
+  "at",
+  "to",
+  "for",
+  "of",
+  "with",
+  "by",
+  "from",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+  "have",
+  "has",
+  "had",
+  "do",
+  "does",
+  "did",
+  "will",
+  "would",
+  "could",
+  "should",
+  "may",
+  "might",
+  "shall",
+  "can",
+  "need",
+  "must",
+  "it",
+  "its",
+  "this",
+  "that",
+  "these",
+  "those",
+  "i",
+  "me",
+  "my",
+  "we",
+  "our",
+  "you",
+  "your",
+  "he",
+  "she",
+  "they",
+  "them",
+  "their",
+  "what",
+  "which",
+  "who",
+  "whom",
+  "when",
+  "where",
+  "how",
+  "not",
+  "no",
+  "nor",
+  "if",
+  "then",
+  "than",
+  "so",
+  "as",
+  "up",
+  "out",
+  "about",
+  "into",
+  "through",
+  "during",
+  "before",
+  "after",
+  "above",
+  "below",
+  "between",
+  "same",
+  "each",
+  "every",
+  "all",
+  "both",
+  "few",
+  "more",
+  "most",
+  "other",
+  "some",
+  "such",
+  "only",
+  "own",
+  "just",
+  "also",
+  "very",
+  "too",
 ]);
 
 /* ------------------------------------------------------------------ */
@@ -65,7 +153,7 @@ const STOP_WORDS = new Set([
 function normalizeText(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 1 && !STOP_WORDS.has(w));
 }
@@ -105,7 +193,7 @@ export function generateFingerprint(text: string): string {
   const words = normalizeText(text);
   const ngrams = generateNgrams(words);
   const sorted = [...ngrams].sort();
-  return createHash('sha256').update(sorted.join('|')).digest('hex');
+  return createHash("sha256").update(sorted.join("|")).digest("hex");
 }
 
 /* ------------------------------------------------------------------ */
@@ -166,7 +254,7 @@ export async function findDuplicates(issue: {
   title: string;
   body: string;
 }): Promise<DuplicateResult> {
-  const combinedText = issue.title + ' ' + issue.body;
+  const combinedText = issue.title + " " + issue.body;
   const fingerprint = generateFingerprint(combinedText);
 
   // Get all existing embeddings
@@ -190,7 +278,7 @@ export async function findDuplicates(issue: {
 
     // We need the body text for comparison — reconstruct from stored fingerprint context
     // Since we store fingerprints, we use word-set comparison on available data
-    const candidateText = embedding.body_fingerprint ?? '';
+    const candidateText = embedding.body_fingerprint ?? "";
 
     // If candidate has no stored text, skip meaningful comparison
     if (!candidateText) continue;
@@ -209,7 +297,7 @@ export async function findDuplicates(issue: {
     if (currentEmbedding.length > 0 && embedding.embedding_vector) {
       try {
         const storedVector: number[] = JSON.parse(
-          embedding.embedding_vector.toString('utf-8'),
+          embedding.embedding_vector.toString("utf-8"),
         );
         if (Array.isArray(storedVector) && storedVector.length > 0) {
           const cosineScore = cosineSimilarity(currentEmbedding, storedVector);
@@ -233,11 +321,12 @@ export async function findDuplicates(issue: {
     body_fingerprint: combinedText, // Store combined text for future comparisons
     embedding_vector:
       currentEmbedding.length > 0
-        ? Buffer.from(JSON.stringify(currentEmbedding), 'utf-8')
+        ? Buffer.from(JSON.stringify(currentEmbedding), "utf-8")
         : undefined,
   });
 
-  const isDuplicate = bestSimilarity >= DUPLICATE_THRESHOLD && bestCandidate !== undefined;
+  const isDuplicate =
+    bestSimilarity >= DUPLICATE_THRESHOLD && bestCandidate !== undefined;
 
   if (isDuplicate) {
     logger.info(
@@ -246,12 +335,15 @@ export async function findDuplicates(issue: {
         originalIssue: bestCandidate,
         similarity: bestSimilarity.toFixed(3),
       },
-      'Duplicate detected',
+      "Duplicate detected",
     );
   } else {
     logger.info(
-      { issueNumber: issue.issueNumber, bestSimilarity: bestSimilarity.toFixed(3) },
-      'No duplicate found',
+      {
+        issueNumber: issue.issueNumber,
+        bestSimilarity: bestSimilarity.toFixed(3),
+      },
+      "No duplicate found",
     );
   }
 

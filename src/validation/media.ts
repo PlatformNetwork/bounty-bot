@@ -5,7 +5,7 @@
  * via HEAD requests, and returns a structured validation result.
  */
 
-import { logger } from '../logger.js';
+import { logger } from "../logger.js";
 
 /* ------------------------------------------------------------------ */
 /*  URL extraction patterns                                            */
@@ -87,9 +87,9 @@ export async function checkMediaAccessibility(
     urls.map(async (url) => {
       try {
         const response = await fetch(url, {
-          method: 'HEAD',
+          method: "HEAD",
           signal: AbortSignal.timeout(HEAD_TIMEOUT_MS),
-          redirect: 'follow',
+          redirect: "follow",
         });
         return { url, ok: response.ok };
       } catch {
@@ -99,7 +99,7 @@ export async function checkMediaAccessibility(
   );
 
   for (const result of results) {
-    if (result.status === 'fulfilled') {
+    if (result.status === "fulfilled") {
       if (result.value.ok) {
         accessible.push(result.value.url);
       } else {
@@ -107,7 +107,7 @@ export async function checkMediaAccessibility(
       }
     } else {
       // Promise rejected — treat as inaccessible
-      inaccessible.push('unknown');
+      inaccessible.push("unknown");
     }
   }
 
@@ -142,7 +142,7 @@ export async function validateMedia(
   const evidence: string[] = [];
 
   if (urls.length === 0) {
-    evidence.push('No media URLs found in issue body');
+    evidence.push("No media URLs found in issue body");
     return { hasMedia: false, accessible: false, urls, evidence };
   }
 
@@ -160,8 +160,12 @@ export async function validateMedia(
   const allAccessible = inaccessible.length === 0;
 
   logger.info(
-    { totalUrls: urls.length, accessible: accessible.length, inaccessible: inaccessible.length },
-    'Media validation complete',
+    {
+      totalUrls: urls.length,
+      accessible: accessible.length,
+      inaccessible: inaccessible.length,
+    },
+    "Media validation complete",
   );
 
   return {

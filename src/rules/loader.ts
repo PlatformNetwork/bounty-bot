@@ -8,16 +8,16 @@
  * Also supports legacy flat rules/ files for backwards compatibility.
  */
 
-import fs from 'fs';
-import path from 'path';
-import { pathToFileURL } from 'url';
+import fs from "fs";
+import path from "path";
+import { pathToFileURL } from "url";
 
-import { logger } from '../logger.js';
-import type { CodeRule, LLMRule } from './types.js';
+import { logger } from "../logger.js";
+import type { CodeRule, LLMRule } from "./types.js";
 
-const RULES_BASE = path.resolve(process.cwd(), 'rules');
-const CODE_DIR = path.join(RULES_BASE, 'code');
-const LLM_DIR = path.join(RULES_BASE, 'llm');
+const RULES_BASE = path.resolve(process.cwd(), "rules");
+const CODE_DIR = path.join(RULES_BASE, "code");
+const LLM_DIR = path.join(RULES_BASE, "llm");
 
 let cachedCodeRules: CodeRule[] | null = null;
 let cachedLLMRules: LLMRule[] | null = null;
@@ -28,7 +28,7 @@ let cachedLLMRules: LLMRule[] | null = null;
 
 export async function loadCodeRules(): Promise<CodeRule[]> {
   if (cachedCodeRules) return cachedCodeRules;
-  cachedCodeRules = await scanDir<CodeRule>(CODE_DIR, isValidCodeRule, 'code');
+  cachedCodeRules = await scanDir<CodeRule>(CODE_DIR, isValidCodeRule, "code");
   return cachedCodeRules;
 }
 
@@ -48,7 +48,7 @@ export function getCodeRulesByCategory(category: string): CodeRule[] {
 
 export async function loadLLMRules(): Promise<LLMRule[]> {
   if (cachedLLMRules) return cachedLLMRules;
-  cachedLLMRules = await scanDir<LLMRule>(LLM_DIR, isValidLLMRule, 'llm');
+  cachedLLMRules = await scanDir<LLMRule>(LLM_DIR, isValidLLMRule, "llm");
   return cachedLLMRules;
 }
 
@@ -65,7 +65,7 @@ export async function loadRules(): Promise<CodeRule[]> {
   const [code, llm] = await Promise.all([loadCodeRules(), loadLLMRules()]);
   logger.info(
     { codeRules: code.length, llmRules: llm.length },
-    'All rules loaded',
+    "All rules loaded",
   );
   return code;
 }
@@ -103,7 +103,7 @@ async function scanDir<T>(
 
   const files = fs
     .readdirSync(dir)
-    .filter((f) => f.endsWith('.ts') || f.endsWith('.js'))
+    .filter((f) => f.endsWith(".ts") || f.endsWith(".js"))
     .sort();
 
   if (files.length === 0) {
@@ -121,7 +121,10 @@ async function scanDir<T>(
       const items: unknown = mod.default ?? mod.rules;
 
       if (!Array.isArray(items)) {
-        logger.warn({ file, label }, 'Rule file does not export a default array — skipped');
+        logger.warn(
+          { file, label },
+          "Rule file does not export a default array — skipped",
+        );
         continue;
       }
 
@@ -132,19 +135,21 @@ async function scanDir<T>(
           loaded++;
         } else {
           logger.warn(
-            { file, label, ruleId: (item as { id?: string })?.id ?? 'unknown' },
-            'Invalid rule shape — skipped',
+            { file, label, ruleId: (item as { id?: string })?.id ?? "unknown" },
+            "Invalid rule shape — skipped",
           );
         }
       }
 
-      logger.info({ file, label, count: loaded }, 'Rules loaded');
+      logger.info({ file, label, count: loaded }, "Rules loaded");
     } catch (err) {
-      logger.error({ err, file, label }, 'Failed to load rule file');
+      logger.error({ err, file, label }, "Failed to load rule file");
     }
   }
 
-  const enabled = all.filter((r) => (r as { enabled?: boolean }).enabled !== false).length;
+  const enabled = all.filter(
+    (r) => (r as { enabled?: boolean }).enabled !== false,
+  ).length;
   logger.info({ label, total: all.length, enabled }, `${label} rules ready`);
   return all;
 }
@@ -154,25 +159,25 @@ async function scanDir<T>(
 /* ------------------------------------------------------------------ */
 
 function isValidCodeRule(obj: unknown): obj is CodeRule {
-  if (typeof obj !== 'object' || obj === null) return false;
+  if (typeof obj !== "object" || obj === null) return false;
   const r = obj as Record<string, unknown>;
   return (
-    typeof r.id === 'string' &&
-    typeof r.description === 'string' &&
-    typeof r.category === 'string' &&
-    typeof r.severity === 'string' &&
-    typeof r.evaluate === 'function'
+    typeof r.id === "string" &&
+    typeof r.description === "string" &&
+    typeof r.category === "string" &&
+    typeof r.severity === "string" &&
+    typeof r.evaluate === "function"
   );
 }
 
 function isValidLLMRule(obj: unknown): obj is LLMRule {
-  if (typeof obj !== 'object' || obj === null) return false;
+  if (typeof obj !== "object" || obj === null) return false;
   const r = obj as Record<string, unknown>;
   return (
-    typeof r.id === 'string' &&
-    typeof r.description === 'string' &&
-    typeof r.category === 'string' &&
-    typeof r.priority === 'string' &&
-    typeof r.instruction === 'string'
+    typeof r.id === "string" &&
+    typeof r.description === "string" &&
+    typeof r.category === "string" &&
+    typeof r.priority === "string" &&
+    typeof r.instruction === "string"
   );
 }

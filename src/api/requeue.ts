@@ -6,7 +6,7 @@
  * and force-release performs NO GitHub mutations.
  */
 
-import { logger } from '../logger.js';
+import { logger } from "../logger.js";
 import {
   getBounty,
   getRequeueRecord,
@@ -14,12 +14,12 @@ import {
   updateBountyStatus,
   unlockBounty,
   insertAuditLog,
-} from '../db/index.js';
-import { reopenIssue, postComment } from '../github/client.js';
-import { clearVerdictLabels } from '../github/mutations.js';
-import { enqueue } from '../queue/processor.js';
-import { getRedis } from '../redis.js';
-import { TARGET_REPO } from '../config.js';
+} from "../db/index.js";
+import { reopenIssue, postComment } from "../github/client.js";
+import { clearVerdictLabels } from "../github/mutations.js";
+import { enqueue } from "../queue/processor.js";
+import { getRedis } from "../redis.js";
+import { TARGET_REPO } from "../config.js";
 
 /* ------------------------------------------------------------------ */
 /*  Config                                                             */
@@ -27,7 +27,7 @@ import { TARGET_REPO } from '../config.js';
 
 /** Maximum age (ms) of an issue eligible for requeue (default 24h). */
 const REQUEUE_MAX_AGE_MS = parseInt(
-  process.env.REQUEUE_MAX_AGE_MS || '86400000',
+  process.env.REQUEUE_MAX_AGE_MS || "86400000",
   10,
 );
 
@@ -36,7 +36,7 @@ const REQUEUE_MAX_AGE_MS = parseInt(
 /* ------------------------------------------------------------------ */
 
 function parseRepo(): { owner: string; repo: string } {
-  const parts = TARGET_REPO.split('/');
+  const parts = TARGET_REPO.split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     throw new Error(`Invalid TARGET_REPO format: "${TARGET_REPO}"`);
   }
@@ -73,7 +73,7 @@ export async function handleRequeue(
   // Validate: issue exists in DB
   const bounty = getBounty(issueNumber);
   if (!bounty) {
-    logger.info({ issueNumber }, 'Requeue: issue not found in DB');
+    logger.info({ issueNumber }, "Requeue: issue not found in DB");
     return { success: false, error: `Issue #${issueNumber} not found` };
   }
 
@@ -84,7 +84,7 @@ export async function handleRequeue(
     if (age > REQUEUE_MAX_AGE_MS) {
       logger.info(
         { issueNumber, ageMs: age, maxAgeMs: REQUEUE_MAX_AGE_MS },
-        'Requeue: issue too old',
+        "Requeue: issue too old",
       );
       return {
         success: false,
@@ -96,7 +96,7 @@ export async function handleRequeue(
   // Validate: not already requeued
   const existingRequeue = getRequeueRecord(issueNumber);
   if (existingRequeue) {
-    logger.info({ issueNumber }, 'Requeue: already requeued');
+    logger.info({ issueNumber }, "Requeue: already requeued");
     return {
       success: false,
       error: `Issue #${issueNumber} has already been requeued`,
@@ -132,12 +132,12 @@ export async function handleRequeue(
     });
 
     // Reset bounty status
-    updateBountyStatus(issueNumber, 'pending');
+    updateBountyStatus(issueNumber, "pending");
 
     // Enqueue for processing
     enqueue({
       issueNumber,
-      workspaceId: bounty.workspace_id ?? '',
+      workspaceId: bounty.workspace_id ?? "",
       retryCount: 0,
       addedAt: new Date().toISOString(),
     });
@@ -145,7 +145,7 @@ export async function handleRequeue(
     // Audit log
     insertAuditLog({
       workspace_id: bounty.workspace_id ?? undefined,
-      action: 'bounty.requeued',
+      action: "bounty.requeued",
       actor: requesterId,
       details: JSON.stringify({
         issue_number: issueNumber,
@@ -154,11 +154,11 @@ export async function handleRequeue(
       github_ref: `#${issueNumber}`,
     });
 
-    logger.info({ issueNumber, requesterId }, 'Requeue: success');
+    logger.info({ issueNumber, requesterId }, "Requeue: success");
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ issueNumber, err: msg }, 'Requeue: failed');
+    logger.error({ issueNumber, err: msg }, "Requeue: failed");
     return { success: false, error: msg };
   }
 }
@@ -192,7 +192,7 @@ export async function handleForceRelease(
       const msg = err instanceof Error ? err.message : String(err);
       logger.warn(
         { issueNumber, err: msg },
-        'Force-release: Redis lock clear failed (continuing)',
+        "Force-release: Redis lock clear failed (continuing)",
       );
     }
 
@@ -210,17 +210,17 @@ export async function handleForceRelease(
 
     // Audit log
     insertAuditLog({
-      action: 'bounty.force_released',
-      actor: 'system',
+      action: "bounty.force_released",
+      actor: "system",
       details: JSON.stringify({ issue_number: issueNumber }),
       github_ref: `#${issueNumber}`,
     });
 
-    logger.info({ issueNumber }, 'Force-release: success');
+    logger.info({ issueNumber }, "Force-release: success");
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ issueNumber, err: msg }, 'Force-release: failed');
+    logger.error({ issueNumber, err: msg }, "Force-release: failed");
     return { success: false, error: msg };
   }
 }

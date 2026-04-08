@@ -12,7 +12,7 @@ export type {
   RuleContext,
   RuleResult,
   RuleEvaluationReport,
-} from './types.js';
+} from "./types.js";
 
 export {
   loadRules,
@@ -23,6 +23,10 @@ export {
   loadLLMRules,
   getCodeRules,
   getLLMRules,
-} from './loader.js';
+} from "./loader.js";
 
-export { evaluateRules, evaluateCategory, formatRulesForPrompt } from './engine.js';
+export {
+  evaluateRules,
+  evaluateCategory,
+  formatRulesForPrompt,
+} from "./engine.js";
