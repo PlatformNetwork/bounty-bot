@@ -1,6 +1,5 @@
 # Bounty-bot Service - Docker Compose
-# Port allocation: 3235-3239 (Bounty-bot services)
-# Atlas uses 3230-3234 separately
+# Port allocation: 3235 (Bounty-bot)
 #
 # Watchtower polls GHCR every 60s and auto-restarts on new images.
 # CI pushes ghcr.io/platformnetwork/bounty-bot:latest on main.
@@ -13,6 +12,7 @@ services:
       dockerfile: Dockerfile
     container_name: bounty-bot
     restart: unless-stopped
+    env_file: .env
     ports:
       - "3235:3235"
     environment:
@@ -20,7 +20,7 @@ services:
       - PORT=3235
       - DATA_DIR=/app/data
       - REDIS_URL=redis://redis:6379
-      - TZ=UTC
+      - ATLAS_WEBHOOK_URL=http://atlas-host:3230/webhooks
     volumes:
       - bounty-data:/app/data
     depends_on:
@@ -33,7 +33,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - bounty-network
+      - platform-network
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     deploy:
@@ -57,7 +57,7 @@ services:
       retries: 5
       start_period: 5s
     networks:
-      - bounty-network
+      - platform-network
     deploy:
       resources:
         limits:
@@ -76,21 +76,21 @@ services:
       - WATCHTOWER_ROLLING_RESTART=true
       - WATCHTOWER_INCLUDE_RESTARTING=true
       - WATCHTOWER_REVIVE_STOPPED=true
-      - WATCHTOWER_NOTIFICATIONS=shoutrrr
       - WATCHTOWER_LIFECYCLE_HOOKS=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /root/.docker/config.json:/config.json:ro
     networks:
-      - bounty-network
+      - platform-network
     deploy:
       resources:
         limits:
           memory: 128M
 
 networks:
-  bounty-network:
-    driver: bridge
+  platform-network:
+    external: true
+    name: platform-network
 
 volumes:
   bounty-data:
