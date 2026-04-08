@@ -137,6 +137,16 @@ export const CREATE_TABLES = [
     discord_ref     TEXT,
     created_at      TEXT
   )`,
+  /* ------------------------------------------------------------------ */
+  /*  blacklisted_users – users banned via !ban-reply command            */
+  /* ------------------------------------------------------------------ */
+  `CREATE TABLE IF NOT EXISTS blacklisted_users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username        TEXT    NOT NULL UNIQUE,
+    banned_by       TEXT,
+    reason          TEXT,
+    banned_at       TEXT
+  )`,
 ] as const;
 
 /** SQL statements that create secondary indexes. */
@@ -169,6 +179,9 @@ export const CREATE_INDEXES = [
   // audit_log
   "CREATE INDEX IF NOT EXISTS idx_audit_workspace      ON audit_log(workspace_id)",
   "CREATE INDEX IF NOT EXISTS idx_audit_action         ON audit_log(action)",
+
+  // blacklisted_users
+  "CREATE UNIQUE INDEX IF NOT EXISTS idx_blacklist_username ON blacklisted_users(username)",
 ] as const;
 
 /**
@@ -179,6 +192,5 @@ export const CREATE_INDEXES = [
  * skipped (SQLite throws "duplicate column name" which we ignore).
  */
 export const MIGRATIONS: string[] = [
-  // Example future migration:
-  // "ALTER TABLE bounties ADD COLUMN priority INTEGER DEFAULT 0",
+  "ALTER TABLE embeddings ADD COLUMN title TEXT",
 ];

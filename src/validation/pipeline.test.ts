@@ -90,6 +90,7 @@ describe("validation/pipeline", () => {
     vi.mocked(findDuplicates).mockResolvedValue({
       isDuplicate: false,
       similarity: 0.1,
+      topSimilar: [],
     });
     vi.mocked(analyzeEditHistory).mockResolvedValue({
       suspicious: false,
@@ -161,6 +162,7 @@ describe("validation/pipeline", () => {
       isDuplicate: true,
       originalIssue: 41999,
       similarity: 0.85,
+      topSimilar: [{ issueNumber: 41999, title: "Same bug", similarity: 0.85 }],
     });
 
     const result = await runValidationPipeline(42001, "ws-1");

@@ -8,7 +8,7 @@
 
 import { ISSUE_FLOOR, TARGET_REPO } from "../config.js";
 import { logger } from "../logger.js";
-import { getBounty, upsertBounty } from "../db/index.js";
+import { getBounty, upsertBounty, isUserBlacklisted } from "../db/index.js";
 import {
   acquireLock,
   releaseLock,
@@ -119,6 +119,13 @@ export function shouldProcess(issue: NormalizedIssue): ProcessResult {
     return {
       process: false,
       reason: `Issue #${issue.issueNumber} below floor (${ISSUE_FLOOR})`,
+    };
+  }
+
+  if (isUserBlacklisted(issue.author)) {
+    return {
+      process: false,
+      reason: `Author "${issue.author}" is blacklisted`,
     };
   }
 

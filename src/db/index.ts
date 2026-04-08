@@ -190,6 +190,7 @@ export interface SpamAnalysisData {
 /** Shape accepted by `upsertEmbedding`. */
 export interface EmbeddingData {
   issue_number: number;
+  title?: string;
   title_fingerprint?: string;
   body_fingerprint?: string;
   embedding_vector?: Buffer;
@@ -199,6 +200,7 @@ export interface EmbeddingData {
 export interface EmbeddingRow {
   id: number;
   issue_number: number;
+  title: string | null;
   title_fingerprint: string | null;
   body_fingerprint: string | null;
   embedding_vector: Buffer | null;
@@ -551,9 +553,10 @@ export function upsertEmbedding(data: EmbeddingData): void {
   d.prepare(
     `
     INSERT INTO embeddings (
-      issue_number, title_fingerprint, body_fingerprint, embedding_vector, created_at
-    ) VALUES (?, ?, ?, ?, ?)
+      issue_number, title, title_fingerprint, body_fingerprint, embedding_vector, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(issue_number) DO UPDATE SET
+      title             = COALESCE(?, title),
       title_fingerprint = COALESCE(?, title_fingerprint),
       body_fingerprint  = COALESCE(?, body_fingerprint),
       embedding_vector  = COALESCE(?, embedding_vector),
@@ -561,10 +564,12 @@ export function upsertEmbedding(data: EmbeddingData): void {
   `,
   ).run(
     data.issue_number,
+    data.title ?? null,
     data.title_fingerprint ?? null,
     data.body_fingerprint ?? null,
     data.embedding_vector ?? null,
     ts,
+    data.title ?? null,
     data.title_fingerprint ?? null,
     data.body_fingerprint ?? null,
     data.embedding_vector ?? null,
@@ -685,6 +690,66 @@ export function hasDelivered(workspaceId: string, window: string): boolean {
     )
     .get(workspaceId, window);
   return row !== undefined;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Blacklisted users                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface BlacklistedUserRow {
+  id: number;
+  username: string;
+  banned_by: string | null;
+  reason: string | null;
+  banned_at: string | null;
+}
+
+/**
+ * Add a user to the blacklist. Ignored if already blacklisted.
+ */
+export function blacklistUser(
+  username: string,
+  bannedBy: string,
+  reason?: string,
+): void {
+  const d = getBountyDb();
+  const ts = now();
+  d.prepare(
+    `INSERT OR IGNORE INTO blacklisted_users (username, banned_by, reason, banned_at)
+     VALUES (?, ?, ?, ?)`,
+  ).run(username.toLowerCase(), bannedBy, reason ?? null, ts);
+}
+
+/**
+ * Remove a user from the blacklist.
+ */
+export function unblacklistUser(username: string): boolean {
+  const d = getBountyDb();
+  const result = d
+    .prepare("DELETE FROM blacklisted_users WHERE username = ?")
+    .run(username.toLowerCase());
+  return result.changes > 0;
+}
+
+/**
+ * Check if a user is blacklisted.
+ */
+export function isUserBlacklisted(username: string): boolean {
+  const d = getBountyDb();
+  const row = d
+    .prepare("SELECT 1 FROM blacklisted_users WHERE username = ?")
+    .get(username.toLowerCase());
+  return row !== undefined;
+}
+
+/**
+ * List all blacklisted users.
+ */
+export function getBlacklistedUsers(): BlacklistedUserRow[] {
+  const d = getBountyDb();
+  return d
+    .prepare("SELECT * FROM blacklisted_users ORDER BY banned_at DESC")
+    .all() as BlacklistedUserRow[];
 }
 
 /* ------------------------------------------------------------------ */

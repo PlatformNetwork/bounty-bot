@@ -265,6 +265,29 @@ export async function getIssueEvents(
 }
 
 /**
+ * Check if a user is a collaborator on a repository.
+ * Returns true if the user has push access or above.
+ */
+export async function checkCollaborator(
+  owner: string,
+  repo: string,
+  username: string,
+): Promise<boolean> {
+  try {
+    await githubFetch<unknown>(
+      "GET",
+      `/repos/${owner}/${repo}/collaborators/${encodeURIComponent(username)}`,
+    );
+    return true;
+  } catch (err: unknown) {
+    if (err instanceof GitHubApiError && err.statusCode === 404) {
+      return false;
+    }
+    return false;
+  }
+}
+
+/**
  * List recent issues for a repository.
  *
  * @param since - ISO 8601 timestamp to filter issues updated after

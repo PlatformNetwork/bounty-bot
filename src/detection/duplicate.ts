@@ -30,10 +30,17 @@ export const DUPLICATE_THRESHOLD = parseFloat(
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
+export interface SimilarIssue {
+  issueNumber: number;
+  title: string;
+  similarity: number;
+}
+
 export interface DuplicateResult {
   isDuplicate: boolean;
   originalIssue?: number;
   similarity: number;
+  topSimilar: SimilarIssue[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -266,21 +273,15 @@ export async function findDuplicates(issue: {
     currentEmbedding = await computeEmbedding(combinedText);
   }
 
-  let bestSimilarity = 0;
-  let bestCandidate: number | undefined;
+  // Track top 5 most similar issues
+  const TOP_N = 5;
+  const scored: { issueNumber: number; title: string; similarity: number }[] = [];
 
   for (const embedding of embeddings) {
-    // Only older issues can be originals
     if (embedding.issue_number >= issue.issueNumber) continue;
-
-    // Respect ISSUE_FLOOR
     if (embedding.issue_number < ISSUE_FLOOR) continue;
 
-    // We need the body text for comparison — reconstruct from stored fingerprint context
-    // Since we store fingerprints, we use word-set comparison on available data
     const candidateText = embedding.body_fingerprint ?? "";
-
-    // If candidate has no stored text, skip meaningful comparison
     if (!candidateText) continue;
 
     const jaccardScore = computeSimilarity(
@@ -292,8 +293,6 @@ export async function findDuplicates(issue: {
 
     let finalScore = jaccardScore;
 
-    // If we have a current embedding and the candidate has a stored embedding vector,
-    // compute a hybrid score combining Jaccard and cosine similarity
     if (currentEmbedding.length > 0 && embedding.embedding_vector) {
       try {
         const storedVector: number[] = JSON.parse(
@@ -304,21 +303,31 @@ export async function findDuplicates(issue: {
           finalScore = 0.4 * jaccardScore + 0.6 * cosineScore;
         }
       } catch {
-        // Stored embedding is invalid — fall back to Jaccard only
+        // fall back to Jaccard only
       }
     }
 
-    if (finalScore > bestSimilarity) {
-      bestSimilarity = finalScore;
-      bestCandidate = embedding.issue_number;
-    }
+    scored.push({
+      issueNumber: embedding.issue_number,
+      title: embedding.title ?? `#${embedding.issue_number}`,
+      similarity: finalScore,
+    });
   }
 
-  // Store the current issue's embedding (with vector if available)
+  // Sort by similarity descending, keep top N
+  scored.sort((a, b) => b.similarity - a.similarity);
+  const topSimilar: SimilarIssue[] = scored.slice(0, TOP_N).filter((s) => s.similarity > 0.15);
+
+  const best = topSimilar[0];
+  const bestSimilarity = best?.similarity ?? 0;
+  const bestCandidate = best?.issueNumber;
+
+  // Store the current issue's embedding (with title for future lookups)
   upsertEmbedding({
     issue_number: issue.issueNumber,
+    title: issue.title,
     title_fingerprint: generateFingerprint(issue.title),
-    body_fingerprint: combinedText, // Store combined text for future comparisons
+    body_fingerprint: combinedText,
     embedding_vector:
       currentEmbedding.length > 0
         ? Buffer.from(JSON.stringify(currentEmbedding), "utf-8")
@@ -334,6 +343,7 @@ export async function findDuplicates(issue: {
         issueNumber: issue.issueNumber,
         originalIssue: bestCandidate,
         similarity: bestSimilarity.toFixed(3),
+        topSimilar: topSimilar.map((s) => `#${s.issueNumber} (${(s.similarity * 100).toFixed(0)}%)`),
       },
       "Duplicate detected",
     );
@@ -342,6 +352,7 @@ export async function findDuplicates(issue: {
       {
         issueNumber: issue.issueNumber,
         bestSimilarity: bestSimilarity.toFixed(3),
+        topSimilar: topSimilar.map((s) => `#${s.issueNumber} (${(s.similarity * 100).toFixed(0)}%)`),
       },
       "No duplicate found",
     );
@@ -351,5 +362,6 @@ export async function findDuplicates(issue: {
     isDuplicate,
     originalIssue: isDuplicate ? bestCandidate : undefined,
     similarity: bestSimilarity,
+    topSimilar,
   };
 }

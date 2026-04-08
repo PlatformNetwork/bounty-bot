@@ -13,7 +13,7 @@ export const ISSUE_EVALUATION_PROMPT = {
   id: "bounty.issue-evaluation",
   model: "gemini-3.1-pro-preview-customtools",
   maxTokens: 1500,
-  temperature: 0.1,
+  temperature: 0,
 
   system: `${EVALUATOR_IDENTITY}
 

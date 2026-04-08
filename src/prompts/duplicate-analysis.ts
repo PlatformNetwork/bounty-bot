@@ -12,7 +12,7 @@ export const DUPLICATE_ANALYSIS_PROMPT = {
   id: "bounty.duplicate-analysis",
   model: "gemini-3.1-pro-preview-customtools",
   maxTokens: 600,
-  temperature: 0.1,
+  temperature: 0,
 
   system: `${EVALUATOR_IDENTITY}
 

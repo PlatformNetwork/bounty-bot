@@ -201,7 +201,7 @@ function buildRichComment(issueNumber: number, data: CommentData): string {
     md += "\n```\n</details>\n\n";
   }
 
-  md += `<sub>Validated by bounty-bot • ${new Date().toISOString().slice(0, 10)}</sub>\n`;
+  md += `<sub>Validated by Atlas • ${new Date().toISOString().slice(0, 10)}</sub>\n`;
 
   return md;
 }

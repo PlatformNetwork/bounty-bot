@@ -38,8 +38,12 @@ export function hmacAuthMiddleware(
     ? signatureHeader.slice(7)
     : signatureHeader;
 
-  // Serialize body back to JSON string for verification
-  const body = JSON.stringify(req.body);
+  // Serialize body for HMAC verification.
+  // GET/DELETE/HEAD have no body — Atlas signs "" for them.
+  // POST/PUT/PATCH always have a JSON body that was signed.
+  const body = ["GET", "DELETE", "HEAD"].includes(req.method)
+    ? ""
+    : JSON.stringify(req.body ?? {});
 
   if (!verifySignature(body, signature, timestamp)) {
     logger.warn("HMAC auth: signature verification failed");

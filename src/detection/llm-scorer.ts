@@ -163,7 +163,7 @@ export async function evaluateIssue(issue: {
         ],
         tools: [DELIVER_VERDICT_TOOL],
         tool_choice: { type: "function", function: { name: "deliver_verdict" } },
-        temperature: 0.1,
+        temperature: 0,
         max_tokens: 1500,
         stream: true,
       });
