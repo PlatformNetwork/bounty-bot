@@ -1,12 +1,11 @@
 /**
  * Dynamic rule loader.
  *
- * Scans the rules/ directory for .ts files, imports them, and
- * validates that each exports a default array of Rule objects.
- * Rules are cached after first load.
+ * Scans two directories:
+ *   rules/code/  — CodeRule files (programmatic checks)
+ *   rules/llm/   — LLMRule files (prompt instructions for the model)
  *
- * File naming convention: rules/<category>.ts
- * e.g. rules/validity.ts, rules/spam.ts, rules/media.ts
+ * Also supports legacy flat rules/ files for backwards compatibility.
  */
 
 import fs from 'fs';
@@ -14,99 +13,147 @@ import path from 'path';
 import { pathToFileURL } from 'url';
 
 import { logger } from '../logger.js';
-import type { Rule } from './types.js';
+import type { CodeRule, LLMRule } from './types.js';
 
-const RULES_DIR = path.resolve(process.cwd(), 'rules');
+const RULES_BASE = path.resolve(process.cwd(), 'rules');
+const CODE_DIR = path.join(RULES_BASE, 'code');
+const LLM_DIR = path.join(RULES_BASE, 'llm');
 
-let cachedRules: Rule[] | null = null;
+let cachedCodeRules: CodeRule[] | null = null;
+let cachedLLMRules: LLMRule[] | null = null;
 
-/**
- * Load all rules from the rules/ directory.
- * Caches results — call reloadRules() to force refresh.
- */
-export async function loadRules(): Promise<Rule[]> {
-  if (cachedRules) return cachedRules;
-  cachedRules = await scanAndLoad();
-  return cachedRules;
+/* ------------------------------------------------------------------ */
+/*  Code Rules                                                         */
+/* ------------------------------------------------------------------ */
+
+export async function loadCodeRules(): Promise<CodeRule[]> {
+  if (cachedCodeRules) return cachedCodeRules;
+  cachedCodeRules = await scanDir<CodeRule>(CODE_DIR, isValidCodeRule, 'code');
+  return cachedCodeRules;
 }
 
-/** Force reload rules from disk (useful after hot-update). */
-export async function reloadRules(): Promise<Rule[]> {
-  cachedRules = null;
-  return loadRules();
+export function getCodeRules(): CodeRule[] {
+  return cachedCodeRules ?? [];
 }
 
-/** Get cached rules synchronously (empty if not yet loaded). */
-export function getRules(): Rule[] {
-  return cachedRules ?? [];
-}
-
-/** Get rules filtered by category. */
-export function getRulesByCategory(category: string): Rule[] {
-  return (cachedRules ?? []).filter(
+export function getCodeRulesByCategory(category: string): CodeRule[] {
+  return (cachedCodeRules ?? []).filter(
     (r) => r.category === category && r.enabled !== false,
   );
 }
 
-async function scanAndLoad(): Promise<Rule[]> {
-  if (!fs.existsSync(RULES_DIR)) {
-    logger.info({ dir: RULES_DIR }, 'Rules directory not found — no rules loaded');
+/* ------------------------------------------------------------------ */
+/*  LLM Rules                                                          */
+/* ------------------------------------------------------------------ */
+
+export async function loadLLMRules(): Promise<LLMRule[]> {
+  if (cachedLLMRules) return cachedLLMRules;
+  cachedLLMRules = await scanDir<LLMRule>(LLM_DIR, isValidLLMRule, 'llm');
+  return cachedLLMRules;
+}
+
+export function getLLMRules(): LLMRule[] {
+  return cachedLLMRules ?? [];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Unified loaders                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Load both code and LLM rules. Returns code rules for backwards compat. */
+export async function loadRules(): Promise<CodeRule[]> {
+  const [code, llm] = await Promise.all([loadCodeRules(), loadLLMRules()]);
+  logger.info(
+    { codeRules: code.length, llmRules: llm.length },
+    'All rules loaded',
+  );
+  return code;
+}
+
+/** Force reload both rule sets from disk. */
+export async function reloadRules(): Promise<CodeRule[]> {
+  cachedCodeRules = null;
+  cachedLLMRules = null;
+  return loadRules();
+}
+
+/** Backwards compat — alias for getCodeRules(). */
+export function getRules(): CodeRule[] {
+  return getCodeRules();
+}
+
+/** Backwards compat — alias for getCodeRulesByCategory(). */
+export function getRulesByCategory(category: string): CodeRule[] {
+  return getCodeRulesByCategory(category);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Internal scanner                                                   */
+/* ------------------------------------------------------------------ */
+
+async function scanDir<T>(
+  dir: string,
+  validate: (obj: unknown) => obj is T,
+  label: string,
+): Promise<T[]> {
+  if (!fs.existsSync(dir)) {
+    logger.info({ dir }, `No ${label} rules directory — skipping`);
     return [];
   }
 
   const files = fs
-    .readdirSync(RULES_DIR)
+    .readdirSync(dir)
     .filter((f) => f.endsWith('.ts') || f.endsWith('.js'))
     .sort();
 
   if (files.length === 0) {
-    logger.info('No rule files found in rules/');
+    logger.info({ dir }, `No ${label} rule files found`);
     return [];
   }
 
-  const allRules: Rule[] = [];
+  const all: T[] = [];
 
   for (const file of files) {
-    const filePath = path.join(RULES_DIR, file);
+    const filePath = path.join(dir, file);
     try {
       const fileUrl = pathToFileURL(filePath).href;
       const mod = await import(fileUrl);
-      const rules: unknown = mod.default ?? mod.rules;
+      const items: unknown = mod.default ?? mod.rules;
 
-      if (!Array.isArray(rules)) {
-        logger.warn({ file }, 'Rule file does not export a default array — skipped');
+      if (!Array.isArray(items)) {
+        logger.warn({ file, label }, 'Rule file does not export a default array — skipped');
         continue;
       }
 
       let loaded = 0;
-      for (const rule of rules) {
-        if (isValidRule(rule)) {
-          allRules.push(rule);
+      for (const item of items) {
+        if (validate(item)) {
+          all.push(item);
           loaded++;
         } else {
           logger.warn(
-            { file, ruleId: (rule as { id?: string })?.id ?? 'unknown' },
+            { file, label, ruleId: (item as { id?: string })?.id ?? 'unknown' },
             'Invalid rule shape — skipped',
           );
         }
       }
 
-      logger.info({ file, count: loaded }, 'Rules loaded from file');
+      logger.info({ file, label, count: loaded }, 'Rules loaded');
     } catch (err) {
-      logger.error({ err, file }, 'Failed to load rule file');
+      logger.error({ err, file, label }, 'Failed to load rule file');
     }
   }
 
-  const enabledCount = allRules.filter((r) => r.enabled !== false).length;
-  logger.info(
-    { total: allRules.length, enabled: enabledCount, files: files.length },
-    'All rules loaded',
-  );
-
-  return allRules;
+  const enabled = all.filter((r) => (r as { enabled?: boolean }).enabled !== false).length;
+  logger.info({ label, total: all.length, enabled }, `${label} rules ready`);
+  return all;
 }
 
-function isValidRule(obj: unknown): obj is Rule {
+/* ------------------------------------------------------------------ */
+/*  Validators                                                         */
+/* ------------------------------------------------------------------ */
+
+function isValidCodeRule(obj: unknown): obj is CodeRule {
   if (typeof obj !== 'object' || obj === null) return false;
   const r = obj as Record<string, unknown>;
   return (
@@ -115,5 +162,17 @@ function isValidRule(obj: unknown): obj is Rule {
     typeof r.category === 'string' &&
     typeof r.severity === 'string' &&
     typeof r.evaluate === 'function'
+  );
+}
+
+function isValidLLMRule(obj: unknown): obj is LLMRule {
+  if (typeof obj !== 'object' || obj === null) return false;
+  const r = obj as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' &&
+    typeof r.description === 'string' &&
+    typeof r.category === 'string' &&
+    typeof r.priority === 'string' &&
+    typeof r.instruction === 'string'
   );
 }

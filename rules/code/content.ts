@@ -5,7 +5,7 @@
  * Evaluated alongside validity rules.
  */
 
-import type { Rule } from '../src/rules/types.js';
+import type { Rule } from '../../src/rules/types.js';
 
 const rules: Rule[] = [
   {

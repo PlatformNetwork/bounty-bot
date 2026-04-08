@@ -5,7 +5,7 @@
  * These apply penalty weights that the engine sums into penaltyScore.
  */
 
-import type { Rule } from '../src/rules/types.js';
+import type { Rule } from '../../src/rules/types.js';
 
 const rules: Rule[] = [
   {

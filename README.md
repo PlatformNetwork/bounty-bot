@@ -40,8 +40,8 @@ flowchart LR
         MEDIA[Media Check] --> SPAM[Spam Detection]
         SPAM --> DUP[Duplicate Detection]
         DUP --> EDIT[Edit History]
-        EDIT --> RULES[Rules Engine]
-        RULES --> LLM["LLM Gate\n(Gemini 3.1 Pro)"]
+        EDIT --> CODE["Code Rules\n(rules/code/)"]
+        CODE --> LLM["LLM Gate\n+ LLM Rules\n(rules/llm/)"]
     end
 
     subgraph Output
@@ -66,8 +66,8 @@ Each issue passes through six stages. A failure at any stage short-circuits to a
 | **Spam** | Template similarity, burst frequency, parity scoring | `invalid` |
 | **Duplicate** | Jaccard + Qwen3 cosine hybrid (`0.4J + 0.6C`) | `duplicate` |
 | **Edit History** | Suspicious post-submission edits (evidence swaps) | `invalid` |
-| **Rules** | Configurable rules from `rules/*.ts` | `invalid` or penalty |
-| **LLM Gate** | Gemini 3.1 Pro with `deliver_verdict` tool calling | `invalid` |
+| **Code Rules** | Programmatic checks from `rules/code/*.ts` | `invalid` or penalty |
+| **LLM Gate** | Gemini 3.1 Pro + LLM instructions from `rules/llm/*.ts` | `invalid` |
 
 If all stages pass, the issue is labeled **valid**.
 
@@ -113,18 +113,24 @@ Full schemas and examples: **<a href="docs/API.md">docs/API.md</a>**
 
 ## Rules Engine
 
-Drop a TypeScript file in `rules/` and bounty-bot loads it at startup. Each file exports an array of typed rules that are evaluated during the pipeline and injected into the LLM prompt.
+Two kinds of rules, two directories:
 
 ```
 rules/
-  validity.ts     # body length, title quality, structure
-  media.ts        # evidence requirements
-  spam.ts         # template detection, generic titles
-  content.ts      # profanity, length limits, context
-  scoring.ts      # penalty weight adjustments
+  code/               # Programmatic checks — executed by the engine
+    validity.ts       # body length, title quality, structure
+    media.ts          # evidence requirements
+    spam.ts           # template detection, generic titles
+    content.ts        # profanity, length limits, context
+    scoring.ts        # penalty weight adjustments
+  llm/                # LLM instructions — injected into the prompt
+    evaluation.ts     # evidence priority, reproducibility, confidence
+    tone.ts           # professional tone, no sympathy verdicts
+    spam-detection.ts # template farming, AI filler, screenshot mismatch
+    output-format.ts  # tool usage, reasoning order, no internal leaks
 ```
 
-Four severity levels:
+**Code rules** run programmatically and produce pass/fail results. They short-circuit the pipeline:
 
 | Severity | Effect |
 |---|---|
@@ -132,6 +138,8 @@ Four severity levels:
 | `require` | Must pass or `invalid` |
 | `penalize` | Adds weight to penalty score |
 | `flag` | Logged but no verdict change |
+
+**LLM rules** are natural-language instructions injected into the model's system prompt, ordered by priority (`critical` > `high` > `normal` > `low`). They shape how the model reasons and phrases its verdict.
 
 Hot-reload without restart: `POST /api/v1/rules/reload`
 

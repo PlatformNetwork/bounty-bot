@@ -5,7 +5,7 @@
  * These are evaluated first in the pipeline.
  */
 
-import type { Rule } from '../src/rules/types.js';
+import type { Rule } from '../../src/rules/types.js';
 
 const rules: Rule[] = [
   {

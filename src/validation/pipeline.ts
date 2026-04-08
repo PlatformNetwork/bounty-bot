@@ -260,9 +260,9 @@ export async function runValidationPipeline(
   };
   const ruleReport = await evaluateRules(ruleCtx);
 
-  // If any REJECT rule failed, immediately invalidate
+  // If any REJECT code rule failed, immediately invalidate
   if (ruleReport.hasReject) {
-    const rejectRules = ruleReport.failed.filter((r) => r.severity === 'reject');
+    const rejectRules = ruleReport.codeResults.failed.filter((r) => r.severity === 'reject');
     logger.info(
       { issueNumber, verdict: 'invalid', rejectRules: rejectRules.map((r) => r.ruleId) },
       'Pipeline: REJECT rule(s) triggered',
@@ -282,7 +282,7 @@ export async function runValidationPipeline(
   }
 
   // If REQUIRE rules failed, invalidate
-  const requireFailures = ruleReport.failed.filter((r) => r.severity === 'require');
+  const requireFailures = ruleReport.codeResults.failed.filter((r) => r.severity === 'require');
   if (requireFailures.length > 0) {
     logger.info(
       { issueNumber, verdict: 'invalid', requireRules: requireFailures.map((r) => r.ruleId) },
@@ -302,7 +302,7 @@ export async function runValidationPipeline(
     };
   }
 
-  // LLM validity gate — includes rule evaluation results in prompt context
+  // LLM validity gate — includes code rule results + LLM instructions in prompt
   logger.info({ issueNumber }, 'Pipeline: running LLM validity check');
   const rulesPromptContext = formatRulesForPrompt(ruleReport);
   const llmValidity = await scoreIssueValidity({
@@ -323,7 +323,7 @@ export async function runValidationPipeline(
       checklist: [
         'Ensure the issue describes a genuine, reproducible bug',
         'Provide clear steps to reproduce and evidence',
-        ...ruleReport.failed.map((r) => r.message),
+        ...ruleReport.codeResults.failed.map((r) => r.message),
       ],
       evidence: { ...evidenceParts, llmValidity, rules: ruleReport },
       spamScore: spamResult.overallScore,

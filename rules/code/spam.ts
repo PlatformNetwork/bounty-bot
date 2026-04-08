@@ -5,7 +5,7 @@
  * Evaluated after the spam scoring phase.
  */
 
-import type { Rule } from '../src/rules/types.js';
+import type { Rule } from '../../src/rules/types.js';
 
 const rules: Rule[] = [
   {
