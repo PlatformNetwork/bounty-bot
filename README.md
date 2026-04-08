@@ -1,150 +1,182 @@
-# Bounty-bot
+<div align="center">
 
-Automated GitHub bounty issue validation service. Bounty-bot receives GitHub webhook events (or polls for missed issues), runs every submission through a multi-stage detection pipeline — media checks, spam analysis, duplicate detection, edit-history fraud, and LLM-assisted scoring — then publishes a verdict back to GitHub with labels, comments, and issue state changes.
+# Bounty Bot
 
-Controlled by **Atlas** via a REST API with HMAC authentication. Callbacks are sent to Atlas on completion or failure.
+**Autonomous GitHub issue validation engine for bug bounty programs**
 
-## Architecture
+**<a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="docs/API.md">API</a> · <a href="docs/DETECTION.md">Detection</a> · <a href="docs/RULES.md">Rules</a> · <a href="docs/DEPLOYMENT.md">Deployment</a> · <a href="docs/CONFIGURATION.md">Configuration</a>**
+
+[![CI](https://github.com/PlatformNetwork/bounty-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/PlatformNetwork/bounty-bot/actions/workflows/ci.yml)
+
+![Bounty Bot Banner](assets/banner.png)
+
+</div>
+
+---
+
+## Overview
+
+Bounty Bot is the validation backbone for PlatformNetwork's bug bounty program. Every issue submitted to [bounty-challenge](https://github.com/PlatformNetwork/bounty-challenge) is automatically ingested, scored through a multi-stage detection pipeline, and labeled with a verdict — all without human intervention.
+
+**Core principles**
+- LLM-assisted evaluation with deterministic rule enforcement.
+- Zero-trust design: HMAC-signed inter-service calls, no hardcoded secrets.
+- Extensible rules engine — drop a `.ts` file in `rules/` and it's live.
+
+---
+
+## How It Works
 
 ```mermaid
-flowchart TD
-    GH[GitHub Webhook] -->|issues.opened| WH[Webhook Receiver]
-    POLL[Poller] -->|missed events| INT[Intake]
-    ATLAS[Atlas API call] -->|trigger| INT
-    WH --> INT
-    INT -->|filter ≥ #41000| Q[Queue]
-    Q --> PIPE[Validation Pipeline]
-
-    subgraph Pipeline
-        PIPE --> MEDIA[Media Check]
-        MEDIA --> SPAM[Spam Detection]
-        SPAM --> DUP[Duplicate Detection]
-        DUP --> EDIT[Edit History]
-        EDIT --> LLM[LLM Validity Gate]
+flowchart LR
+    subgraph Ingest
+        GH[GitHub Webhook]
+        POLL[Poller]
+        API[Atlas Command]
     end
 
-    LLM --> VERD[Verdict Engine]
-    VERD -->|labels + comment| GH_MUT[GitHub Mutations]
-    VERD -->|webhook callback| ATLAS_CB[Atlas Callback]
-    VERD -->|persist| DB[(SQLite)]
+    subgraph Validate["Validation Pipeline"]
+        direction TB
+        MEDIA[Media Check] --> SPAM[Spam Detection]
+        SPAM --> DUP[Duplicate Detection]
+        DUP --> EDIT[Edit History]
+        EDIT --> RULES[Rules Engine]
+        RULES --> LLM["LLM Gate\n(Gemini 3.1 Pro)"]
+    end
 
-    Q -->|max retries| DL[Dead Letter]
+    subgraph Output
+        GH_MUT[GitHub Labels\n+ Comments]
+        ATLAS_CB[Atlas Callback]
+        DB[(SQLite)]
+    end
+
+    GH --> Validate
+    POLL --> Validate
+    API --> Validate
+    Validate --> GH_MUT
+    Validate --> ATLAS_CB
+    Validate --> DB
 ```
+
+Each issue passes through six stages. A failure at any stage short-circuits to a verdict:
+
+| Stage | What it checks | Failure verdict |
+|---|---|---|
+| **Media** | Screenshot/video present and accessible (HTTP 200) | `invalid` |
+| **Spam** | Template similarity, burst frequency, parity scoring | `invalid` |
+| **Duplicate** | Jaccard + Qwen3 cosine hybrid (`0.4J + 0.6C`) | `duplicate` |
+| **Edit History** | Suspicious post-submission edits (evidence swaps) | `invalid` |
+| **Rules** | Configurable rules from `rules/*.ts` | `invalid` or penalty |
+| **LLM Gate** | Gemini 3.1 Pro with `deliver_verdict` tool calling | `invalid` |
+
+If all stages pass, the issue is labeled **valid**.
+
+---
 
 ## Quick Start
 
-### Prerequisites
-
-| Dependency | Version |
-|---|---|
-| Node.js | ≥ 20 |
-| Redis | any (default port 3231) |
-| Docker + Compose | optional, for containerised deployment |
-
-### Environment Variables
-
-Create a `.env` file (see [Configuration](#configuration) for the full list):
-
-```env
-GITHUB_TOKEN=ghp_...
-GITHUB_WEBHOOK_SECRET=your-webhook-secret
-INTER_SERVICE_HMAC_SECRET=shared-secret-with-atlas
-REDIS_URL=redis://localhost:3231
-OPENROUTER_API_KEY=sk-or-...
-ATLAS_WEBHOOK_URL=http://localhost:3230/webhooks
-TARGET_REPO=PlatformNetwork/bounty-challenge
-```
-
-### Docker Compose
-
 ```bash
-docker compose up -d
-```
-
-The service starts on **port 3235** with SQLite data persisted in a Docker volume.
-
-### Development Mode
-
-```bash
+git clone https://github.com/PlatformNetwork/bounty-bot.git
+cd bounty-bot
+cp .env.example .env   # fill in your tokens
 npm install
-npm run dev          # tsx hot-reload on src/index.ts
-npm run build        # compile TypeScript
-npm start            # run compiled output
+npm run dev
 ```
 
-## API Reference
+Or with Docker:
 
-All `/api/v1/*` endpoints (except webhooks) require HMAC authentication via `X-Signature` and `X-Timestamp` headers.
+```bash
+docker compose up -d   # starts bounty-bot + Redis + Watchtower
+```
 
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| `POST` | `/api/v1/validation/trigger` | HMAC | Trigger validation for an issue |
-| `GET` | `/api/v1/validation/:issue_number/status` | HMAC | Get processing status and verdict |
-| `POST` | `/api/v1/validation/:issue_number/requeue` | HMAC | Requeue for re-validation (24 h max, once per issue) |
-| `POST` | `/api/v1/validation/:issue_number/force-release` | HMAC | Clear a stale processing lock |
-| `GET` | `/api/v1/dead-letter` | HMAC | List dead-lettered items |
-| `POST` | `/api/v1/dead-letter/:id/recover` | HMAC | Re-enqueue a dead-letter item |
-| `POST` | `/api/v1/webhooks/github` | GitHub signature | Receive GitHub webhook events |
-| `GET` | `/health` | none | Liveness probe |
-| `GET` | `/ready` | none | Readiness probe |
+The API listens on **port 3235**. Watchtower auto-updates from GHCR every 60 seconds.
 
-See [docs/API.md](docs/API.md) for full request/response schemas.
+---
 
-## Configuration
+## API
 
-| Variable | Default | Description |
+All `/api/v1/*` endpoints require HMAC authentication (`X-Signature` + `X-Timestamp`).
+
+| Method | Endpoint | Description |
 |---|---|---|
-| `PORT` | `3235` | API listen port |
-| `DATA_DIR` | `./data` | SQLite data directory |
-| `SQLITE_PATH` | `<DATA_DIR>/bounty-bot.db` | Database file path |
-| `REDIS_URL` | `redis://localhost:3231` | Redis connection URL |
-| `GITHUB_TOKEN` | — | GitHub PAT for API requests |
-| `GITHUB_WEBHOOK_SECRET` | — | Secret for verifying GitHub webhook signatures |
-| `INTER_SERVICE_HMAC_SECRET` | — | Shared HMAC secret for Atlas ↔ bounty-bot auth |
-| `ATLAS_WEBHOOK_URL` | `http://localhost:3230/webhooks` | Atlas callback endpoint |
-| `TARGET_REPO` | `PlatformNetwork/bounty-challenge` | GitHub repo to validate (owner/repo) |
-| `OPENROUTER_API_KEY` | — | OpenRouter key for LLM scoring and embeddings |
-| `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenRouter API base URL |
-| `EMBEDDING_MODEL` | `qwen/qwen3-embedding-8b` | Model for semantic embeddings |
-| `LLM_SCORING_MODEL` | `google/gemini-3.1-pro-preview-customtools` | Model for issue evaluation |
-| `POLLER_INTERVAL` | `60000` | Missed-webhook poller interval (ms) |
-| `MAX_RETRIES` | `3` | Queue retry limit before dead-lettering |
-| `ISSUE_FLOOR` | `41000` | Minimum issue number to process |
-| `SPAM_THRESHOLD` | `0.7` | Spam score threshold (0–1) |
-| `DUPLICATE_THRESHOLD` | `0.75` | Duplicate similarity threshold (0–1) |
-| `REQUEUE_MAX_AGE_MS` | `86400000` | Max issue age for requeue eligibility (24 h) |
-| `WEBHOOK_MAX_RETRIES` | `3` | Atlas callback retry attempts |
-| `WEBHOOK_RETRY_DELAY_MS` | `1000` | Base delay between callback retries (ms) |
+| `POST` | `/api/v1/validation/trigger` | Trigger validation |
+| `GET` | `/api/v1/validation/:issue/status` | Get verdict status |
+| `POST` | `/api/v1/validation/:issue/requeue` | Re-validate (24h window) |
+| `POST` | `/api/v1/validation/:issue/force-release` | Clear stale lock |
+| `GET` | `/api/v1/rules` | List loaded rules |
+| `POST` | `/api/v1/rules/reload` | Hot-reload rules from disk |
+| `GET` | `/health` | Liveness probe |
+
+Full schemas and examples: **<a href="docs/API.md">docs/API.md</a>**
+
+---
+
+## Rules Engine
+
+Drop a TypeScript file in `rules/` and bounty-bot loads it at startup. Each file exports an array of typed rules that are evaluated during the pipeline and injected into the LLM prompt.
+
+```
+rules/
+  validity.ts     # body length, title quality, structure
+  media.ts        # evidence requirements
+  spam.ts         # template detection, generic titles
+  content.ts      # profanity, length limits, context
+  scoring.ts      # penalty weight adjustments
+```
+
+Four severity levels:
+
+| Severity | Effect |
+|---|---|
+| `reject` | Instant `invalid` verdict |
+| `require` | Must pass or `invalid` |
+| `penalize` | Adds weight to penalty score |
+| `flag` | Logged but no verdict change |
+
+Hot-reload without restart: `POST /api/v1/rules/reload`
+
+Full documentation: **<a href="docs/RULES.md">docs/RULES.md</a>**
+
+---
 
 ## LLM Integration
 
-Bounty-bot uses two AI models via [OpenRouter](https://openrouter.ai) (OpenAI-compatible API):
+Two models via [OpenRouter](https://openrouter.ai) — both degrade gracefully if no API key is set.
 
-### Gemini 3.1 Pro Custom Tools — Issue Evaluation
+| Model | Purpose | Used in |
+|---|---|---|
+| `google/gemini-3.1-pro-preview-customtools` | Issue evaluation with function calling | `deliver_verdict` tool |
+| `qwen/qwen3-embedding-8b` | Semantic duplicate detection | Cosine similarity vectors |
 
-Model: `google/gemini-3.1-pro-preview-customtools`
+The LLM receives pre-computed detection scores **and** rule evaluation results in its prompt, so rules directly influence the model's reasoning.
 
-Used for full issue evaluation and borderline spam scoring. The model receives a system prompt describing the evaluation criteria and is forced to call a `deliver_verdict` function via OpenAI-style tool/function calling. Returns a structured verdict (`valid` / `invalid` / `duplicate`), confidence score, reasoning, and a public-facing recap.
-
-### Qwen3 Embedding 8B — Semantic Duplicate Detection
-
-Model: `qwen/qwen3-embedding-8b`
-
-Generates high-dimensional embedding vectors for issue text. These vectors are stored in SQLite and compared via cosine similarity to detect semantic duplicates that lexical fingerprinting might miss. The final duplicate score is a hybrid: `0.4 × Jaccard + 0.6 × cosine`.
-
-Both models gracefully degrade: if `OPENROUTER_API_KEY` is unset, the system falls back to lexical-only detection and skips LLM scoring.
+---
 
 ## Testing
 
 ```bash
-npm test             # run all 149 tests (vitest)
-npm run typecheck    # TypeScript type checking
-npm run lint         # ESLint
+npm test             # 149 tests (vitest)
+npm run typecheck    # tsc --noEmit
+npm run lint         # eslint
 ```
 
-## Further Documentation
+---
 
-- [Architecture](docs/ARCHITECTURE.md) — system design, module graph, sequence diagrams, database schema
-- [API Reference](docs/API.md) — full REST API with request/response schemas
-- [Detection Engine](docs/DETECTION.md) — spam, duplicate, edit-history, and LLM scoring details
-- [Deployment](docs/DEPLOYMENT.md) — Docker, Redis, health checks, Atlas integration
+## Documentation
+
+| Document | Description |
+|---|---|
+| **<a href="docs/ARCHITECTURE.md">Architecture</a>** | System design, module graph, sequence diagrams, database schema |
+| **<a href="docs/API.md">API Reference</a>** | Full REST API with request/response schemas |
+| **<a href="docs/DETECTION.md">Detection Engine</a>** | Spam, duplicate, edit-history, and LLM scoring internals |
+| **<a href="docs/RULES.md">Rules Engine</a>** | How to write, load, and manage validation rules |
+| **<a href="docs/CONFIGURATION.md">Configuration</a>** | All environment variables and their defaults |
+| **<a href="docs/DEPLOYMENT.md">Deployment</a>** | Docker, Redis, Watchtower, Atlas integration |
+
+---
+
+<div align="center">
+
+Controlled by **<a href="https://github.com/PlatformNetwork/atlas">Atlas</a>** · Part of **<a href="https://github.com/PlatformNetwork">PlatformNetwork</a>**
+
+</div>
