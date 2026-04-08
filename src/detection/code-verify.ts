@@ -248,40 +248,61 @@ async function toolAnalyzeScreenshot(
       });
     }
 
-    const stream = await openai.chat.completions.create({
-      model: VISION_MODEL,
-      messages: [
-        { role: "system", content: SCREENSHOT_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: [
+    const SCREENSHOT_MAX_RETRIES = 3;
+    const SCREENSHOT_BASE_DELAY_MS = 1000;
+
+    for (let attempt = 1; attempt <= SCREENSHOT_MAX_RETRIES; attempt++) {
+      try {
+        const stream = await openai.chat.completions.create({
+          model: VISION_MODEL,
+          messages: [
+            { role: "system", content: SCREENSHOT_SYSTEM_PROMPT },
             {
-              type: "text",
-              text: `Bug description: ${bugDescription.slice(0, 500)}\n\nAnalyze this screenshot:`,
-            },
-            {
-              type: "image_url",
-              image_url: { url: base64Url, detail: "high" },
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Bug description: ${bugDescription.slice(0, 500)}\n\nAnalyze this screenshot:`,
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: base64Url, detail: "high" },
+                },
+              ],
             },
           ],
-        },
-      ],
-      max_tokens: 300,
-      temperature: 0,
-      stream: true,
-    });
+          max_tokens: 300,
+          temperature: 0,
+          stream: true,
+        });
 
-    const response = await collectStream(stream);
-    const content = response.message.content ?? "";
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return jsonMatch[0];
+        const response = await collectStream(stream);
+        const content = response.message.content ?? "";
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          return jsonMatch[0];
+        }
+        logger.warn({ url, attempt }, "Code-verify: could not parse vision response — retrying");
+        if (attempt < SCREENSHOT_MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, SCREENSHOT_BASE_DELAY_MS * attempt));
+          continue;
+        }
+        return JSON.stringify({ valid: true, reasoning: "Could not parse vision response after retries", shows: "unknown" });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn({ err: msg, url, attempt }, "Code-verify: screenshot analysis failed");
+        if (attempt < SCREENSHOT_MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, SCREENSHOT_BASE_DELAY_MS * attempt));
+          continue;
+        }
+        return JSON.stringify({ valid: true, reasoning: `Vision analysis failed after retries: ${msg.slice(0, 100)}`, shows: "unknown" });
+      }
     }
-    return JSON.stringify({ valid: true, reasoning: "Could not parse vision response", shows: "unknown" });
+    return JSON.stringify({ valid: true, reasoning: "Screenshot analysis exhausted retries", shows: "unknown" });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ err: msg, url }, "Code-verify: screenshot analysis failed");
-    return JSON.stringify({ valid: true, reasoning: `Vision analysis failed: ${msg.slice(0, 100)}`, shows: "unknown" });
+    logger.warn({ err: msg, url }, "Code-verify: screenshot download/processing failed");
+    return JSON.stringify({ valid: false, reasoning: `Screenshot processing failed: ${msg.slice(0, 100)}`, shows: "error" });
   }
 }
 
@@ -473,22 +494,42 @@ Verify this bug: explore the code AND analyze all screenshots. Then call deliver
     { role: "user", content: userMessage },
   ];
 
+  const LLM_MAX_RETRIES = 3;
+  const LLM_BASE_DELAY_MS = 1000;
+
   for (let i = 0; i < CODE_VERIFY_MAX_ITERATIONS; i++) {
-    let assembled: Awaited<ReturnType<typeof collectStream>>;
-    try {
-      const stream = await openai.chat.completions.create({
-        model: LLM_SCORING_MODEL,
-        messages,
-        tools,
-        tool_choice: "auto",
-        temperature: 0,
-        max_tokens: 2000,
-        stream: true,
-      });
-      assembled = await collectStream(stream);
-    } catch (err) {
-      logger.error({ err, issueNumber, iteration: i }, "Code-verify: LLM call failed");
-      return { plausible: false, confidence: 0.8, reasoning: "Code verification LLM call failed. Cannot confirm bug." };
+    let assembled!: Awaited<ReturnType<typeof collectStream>>;
+
+    let llmSuccess = false;
+    for (let attempt = 1; attempt <= LLM_MAX_RETRIES; attempt++) {
+      try {
+        const stream = await openai.chat.completions.create({
+          model: LLM_SCORING_MODEL,
+          messages,
+          tools,
+          tool_choice: "auto",
+          temperature: 0,
+          max_tokens: 2000,
+          stream: true,
+        });
+        assembled = await collectStream(stream);
+        llmSuccess = true;
+        break;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(
+          { err: msg, issueNumber, iteration: i, attempt, maxRetries: LLM_MAX_RETRIES },
+          `Code-verify: LLM call failed (attempt ${attempt}/${LLM_MAX_RETRIES})`,
+        );
+        if (attempt < LLM_MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, LLM_BASE_DELAY_MS * attempt));
+        }
+      }
+    }
+
+    if (!llmSuccess) {
+      logger.error({ issueNumber, iteration: i }, "Code-verify: LLM call failed after all retries");
+      throw new Error(`Code verification LLM call failed after ${LLM_MAX_RETRIES} retries for issue #${issueNumber}`);
     }
 
     const msg = assembled.message;
@@ -566,21 +607,48 @@ Verify this bug: explore the code AND analyze all screenshots. Then call deliver
       continue;
     }
 
-    if (!msg.content) {
-      messages.push({
-        role: "user",
-        content: "Continue investigating. Call deliver_code_verdict when ready.",
-      });
-      continue;
-    }
-
-    break;
+    // Agent responded with text but no tool call — nudge it to deliver verdict
+    messages.push({
+      role: "user",
+      content:
+        "You MUST now call deliver_code_verdict with your findings. " +
+        "Do not explain further — call the tool immediately.",
+    });
   }
 
-  logger.warn({ issueNumber }, "Code-verify: agent did not deliver verdict");
-  return {
-    plausible: false,
-    confidence: 0.8,
-    reasoning: "Verification agent exhausted iterations without delivering a verdict. Bug unverified.",
-  };
+  logger.warn({ issueNumber }, "Code-verify: agent did not deliver verdict — retrying with forced tool_choice");
+
+  // Final forced attempt: explicitly require deliver_code_verdict
+  try {
+    const stream = await openai.chat.completions.create({
+      model: LLM_SCORING_MODEL,
+      messages,
+      tools,
+      tool_choice: { type: "function", function: { name: "deliver_code_verdict" } },
+      temperature: 0,
+      max_tokens: 1500,
+      stream: true,
+    });
+    const forced = await collectStream(stream);
+    const tc = forced.message.tool_calls?.[0];
+    if (tc && tc.function.name === "deliver_code_verdict") {
+      let fnArgs: Record<string, unknown>;
+      try { fnArgs = JSON.parse(tc.function.arguments); } catch { fnArgs = {}; }
+      const result: CodeVerifyResult = {
+        plausible: (fnArgs.plausible as boolean) ?? false,
+        confidence: (fnArgs.confidence as number) ?? 0.5,
+        reasoning: (fnArgs.reasoning as string) ?? "No reasoning (forced verdict).",
+        codeEvidence: fnArgs.code_evidence as string | undefined,
+        screenshotValid: fnArgs.screenshot_valid as boolean | undefined,
+        screenshotReasoning: fnArgs.screenshot_reasoning as string | undefined,
+      };
+      logger.info({ issueNumber, plausible: result.plausible, confidence: result.confidence }, "Code-verify: forced verdict delivered");
+      return result;
+    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.error({ err: errMsg, issueNumber }, "Code-verify: forced verdict call failed");
+  }
+
+  throw new Error(`Code verification agent failed to deliver verdict for issue #${issueNumber} after ${CODE_VERIFY_MAX_ITERATIONS} iterations`);
 }
