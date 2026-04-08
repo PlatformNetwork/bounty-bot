@@ -391,9 +391,25 @@ export async function runValidationPipeline(
     title,
     body: rulesPromptContext ? `${body}\n\n${rulesPromptContext}` : body,
     mediaUrls: mediaResult.urls,
+    similarIssues: dupResult.topSimilar.map((s) => ({
+      number: s.issueNumber,
+      title: s.title,
+      similarity: s.similarity,
+    })),
   });
 
-  if (llmValidity.score >= 0 && llmValidity.score < 0.3) {
+  // LLM unavailable — do NOT silently pass; throw to trigger queue retry
+  if (llmValidity.score < 0) {
+    logger.error(
+      { issueNumber, reasoning: llmValidity.reasoning },
+      "Pipeline: LLM unavailable — cannot validate without LLM",
+    );
+    throw new Error(
+      `LLM evaluation unavailable for issue #${issueNumber}: ${llmValidity.reasoning}`,
+    );
+  }
+
+  if (llmValidity.score < 0.3) {
     logger.info(
       {
         issueNumber,

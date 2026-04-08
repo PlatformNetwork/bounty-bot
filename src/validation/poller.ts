@@ -25,8 +25,13 @@ let lastPollTime: string | undefined;
 /**
  * Execute a single poll iteration.
  *
- * Fetches recent issues from GitHub, filters through shouldProcess,
- * and passes qualifying issues to processIntake.
+ * - First poll (startup): fetches issues CREATED in the last 24h,
+ *   sorted by created DESC, max 5 pages (500 issues).
+ *   Filters client-side to only include issues created >= cutoff.
+ * - Subsequent polls: fetches issues UPDATED since last poll,
+ *   max 2 pages (200 issues) to catch recent activity only.
+ *
+ * Issues are reversed so oldest are queued first (FIFO fairness).
  */
 export async function pollOnce(): Promise<void> {
   const parts = TARGET_REPO.split("/");
@@ -36,25 +41,49 @@ export async function pollOnce(): Promise<void> {
   }
   const [owner, repo] = parts;
 
-  // On first poll, backfill last 24 hours
-  if (!lastPollTime) {
-    lastPollTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    logger.info({ since: lastPollTime }, "Poller: backfilling last 24h");
-  }
-
-  logger.info({ since: lastPollTime }, "Poller: fetching recent issues");
-
+  const isBackfill = !lastPollTime;
   let issues;
-  try {
-    issues = await listAllRecentIssues(owner, repo, lastPollTime);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err: msg }, "Poller: failed to fetch issues");
-    return;
+
+  if (isBackfill) {
+    // Startup backfill: only issues CREATED in last 24h
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const since = cutoff.toISOString();
+    logger.info({ since }, "Poller: backfilling issues created in last 24h");
+
+    try {
+      // sort=created so GitHub returns newest-created first; max 5 pages
+      issues = await listAllRecentIssues(owner, repo, since, 5, "created");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg }, "Poller: failed to fetch issues (backfill)");
+      return;
+    }
+
+    // GitHub `since` filters by updated_at even with sort=created,
+    // so we must filter client-side on created_at.
+    const cutoffMs = cutoff.getTime();
+    issues = issues.filter((issue) => {
+      const created = new Date(issue.created_at).getTime();
+      return created >= cutoffMs;
+    });
+  } else {
+    // Normal poll: issues updated since last poll, max 2 pages
+    logger.info({ since: lastPollTime }, "Poller: fetching recent issues");
+
+    try {
+      issues = await listAllRecentIssues(owner, repo, lastPollTime, 2);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error({ err: msg }, "Poller: failed to fetch issues");
+      return;
+    }
   }
 
   // Update last poll timestamp for next iteration
   lastPollTime = new Date().toISOString();
+
+  // Reverse so oldest issues are queued first (FIFO fairness).
+  issues.reverse();
 
   let processed = 0;
   for (const rawIssue of issues) {
@@ -85,7 +114,7 @@ export async function pollOnce(): Promise<void> {
   }
 
   logger.info(
-    { fetched: issues.length, processed },
+    { fetched: issues.length, processed, backfill: isBackfill },
     "Poller: iteration complete",
   );
 }

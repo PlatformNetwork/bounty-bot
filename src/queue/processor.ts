@@ -185,20 +185,30 @@ export function getQueuePosition(issueNumber: number): number {
 }
 
 /**
- * Recover pending bounties from the database into the in-memory queue.
- * Called once at startup to handle issues inserted before the processor started.
+ * Recover pending AND stuck in_progress bounties from the database
+ * into the in-memory queue. Called once at startup to handle issues
+ * that were pending or mid-flight when the bot restarted.
+ * Sorts by issue_number ASC so oldest issues are processed first.
  */
 export function recoverPendingFromDb(): void {
   const pending = getPendingBounties();
+  const inProgress = getInProgressBounties();
+  const allRecoverable = [...pending, ...inProgress].sort(
+    (a, b) => a.issue_number - b.issue_number,
+  );
   const existingNumbers = new Set(queue.map((e) => e.issueNumber));
   let recovered = 0;
 
-  for (const bounty of pending) {
+  for (const bounty of allRecoverable) {
     if (!existingNumbers.has(bounty.issue_number)) {
+      // Reset in_progress back to pending so it can be re-processed
+      if (bounty.status === "in_progress") {
+        updateBountyStatus(bounty.issue_number, "pending");
+      }
       queue.push({
         issueNumber: bounty.issue_number,
         workspaceId: `ws-${bounty.issue_number}`,
-        retryCount: 0,
+        retryCount: bounty.retry_count ?? 0,
         addedAt: new Date().toISOString(),
       });
       recovered++;
@@ -208,7 +218,7 @@ export function recoverPendingFromDb(): void {
   if (recovered > 0) {
     logger.info(
       { recovered, queueLength: queue.length },
-      "Queue processor: recovered pending bounties from DB",
+      "Queue processor: recovered pending/in-progress bounties from DB",
     );
   }
 }

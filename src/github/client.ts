@@ -269,16 +269,18 @@ export async function getIssueEvents(
  *
  * @param since - ISO 8601 timestamp to filter issues updated after
  * @param page - Page number for pagination (default 1)
+ * @param sort - Sort field: "updated" or "created" (default "updated")
  */
 export async function listRecentIssues(
   owner: string,
   repo: string,
   since?: string,
   page?: number,
+  sort?: "updated" | "created",
 ): Promise<GitHubIssue[]> {
   const params = new URLSearchParams({
     state: "all",
-    sort: "updated",
+    sort: sort ?? "updated",
     direction: "desc",
     per_page: "100",
     page: String(page ?? 1),
@@ -296,18 +298,21 @@ export async function listRecentIssues(
 
 /**
  * Fetch all recent issues with automatic pagination.
- * Fetches up to 10 pages (1000 issues max).
+ *
+ * @param maxPages - Max pages to fetch (default 10, i.e. 1000 issues)
+ * @param sort - Sort field: "updated" or "created" (default "updated")
  */
 export async function listAllRecentIssues(
   owner: string,
   repo: string,
   since?: string,
+  maxPages = 10,
+  sort?: "updated" | "created",
 ): Promise<GitHubIssue[]> {
   const all: GitHubIssue[] = [];
-  const maxPages = 10;
 
   for (let page = 1; page <= maxPages; page++) {
-    const batch = await listRecentIssues(owner, repo, since, page);
+    const batch = await listRecentIssues(owner, repo, since, page, sort);
     all.push(...batch);
     if (batch.length < 100) break;
   }

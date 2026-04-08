@@ -107,6 +107,7 @@ const DELIVER_VERDICT_TOOL: ChatCompletionTool = {
 /* ------------------------------------------------------------------ */
 
 import { ISSUE_EVALUATION_PROMPT } from "../prompts/issue-evaluation.js";
+import { collectStream } from "./llm-stream.js";
 
 /* ------------------------------------------------------------------ */
 /*  Full issue evaluation (function calling)                           */
@@ -130,7 +131,7 @@ export async function evaluateIssue(issue: {
 }): Promise<LLMEvaluationResult> {
   if (!OPENROUTER_API_KEY) {
     return {
-      verdict: "valid",
+      verdict: "invalid",
       confidence: 0,
       recap: "LLM evaluation unavailable (no API key)",
       reasoning: "Skipped — no OPENROUTER_API_KEY configured",
@@ -149,75 +150,102 @@ export async function evaluateIssue(issue: {
     author: issue.author,
   });
 
-  try {
-    const response = await getClient().chat.completions.create({
-      model: LLM_SCORING_MODEL,
-      messages: [
-        { role: "system", content: ISSUE_EVALUATION_PROMPT.system },
-        { role: "user", content: userMessage },
-      ],
-      tools: [DELIVER_VERDICT_TOOL],
-      tool_choice: { type: "function", function: { name: "deliver_verdict" } },
-      temperature: 0.1,
-      max_tokens: 1500,
-    });
+  const MAX_RETRIES = 3;
+  const BASE_DELAY_MS = 1000;
 
-    const toolCall = response.choices[0]?.message?.tool_calls?.[0];
-    if (
-      !toolCall ||
-      !("function" in toolCall) ||
-      toolCall.function.name !== "deliver_verdict"
-    ) {
-      logger.warn("LLM did not call deliver_verdict — falling back");
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const stream = await getClient().chat.completions.create({
+        model: LLM_SCORING_MODEL,
+        messages: [
+          { role: "system", content: ISSUE_EVALUATION_PROMPT.system },
+          { role: "user", content: userMessage },
+        ],
+        tools: [DELIVER_VERDICT_TOOL],
+        tool_choice: { type: "function", function: { name: "deliver_verdict" } },
+        temperature: 0.1,
+        max_tokens: 1500,
+        stream: true,
+      });
+
+      const response = await collectStream(stream);
+      const toolCall = response.message.tool_calls?.[0];
+      if (
+        !toolCall ||
+        toolCall.function.name !== "deliver_verdict"
+      ) {
+        logger.warn(
+          { attempt },
+          "LLM did not call deliver_verdict — retrying",
+        );
+        if (attempt < MAX_RETRIES) {
+          await new Promise((r) => setTimeout(r, BASE_DELAY_MS * attempt));
+          continue;
+        }
+        return {
+          verdict: "invalid",
+          confidence: 0,
+          recap: "LLM did not produce a structured verdict after retries",
+          reasoning: response.message.content ?? "No response",
+          available: false,
+        };
+      }
+
+      const args = JSON.parse(toolCall.function.arguments);
+      const verdict = (["valid", "invalid", "duplicate"] as const).includes(
+        args.verdict,
+      )
+        ? (args.verdict as LLMVerdict)
+        : "valid";
+      const confidence =
+        typeof args.confidence === "number"
+          ? Math.max(0, Math.min(1, args.confidence))
+          : 0.5;
+
+      logger.info(
+        {
+          verdict,
+          confidence: confidence.toFixed(2),
+          recap: (args.recap ?? "").slice(0, 100),
+          attempt,
+        },
+        "LLM evaluation complete",
+      );
+
       return {
-        verdict: "valid",
-        confidence: 0,
-        recap: "LLM did not produce a structured verdict",
-        reasoning: response.choices[0]?.message?.content ?? "No response",
+        verdict,
+        confidence,
+        recap: typeof args.recap === "string" ? args.recap : "",
+        reasoning: typeof args.reasoning === "string" ? args.reasoning : "",
         available: true,
       };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(
+        { err: msg, attempt, maxRetries: MAX_RETRIES },
+        `LLM evaluation failed (attempt ${attempt}/${MAX_RETRIES})`,
+      );
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, BASE_DELAY_MS * attempt));
+        continue;
+      }
+      return {
+        verdict: "invalid",
+        confidence: 0,
+        recap: `LLM evaluation failed after ${MAX_RETRIES} attempts: ${msg}`,
+        reasoning: `Error after ${MAX_RETRIES} retries: ${msg}`,
+        available: false,
+      };
     }
-
-    const args = JSON.parse(
-      (toolCall as { function: { arguments: string } }).function.arguments,
-    );
-    const verdict = (["valid", "invalid", "duplicate"] as const).includes(
-      args.verdict,
-    )
-      ? (args.verdict as LLMVerdict)
-      : "valid";
-    const confidence =
-      typeof args.confidence === "number"
-        ? Math.max(0, Math.min(1, args.confidence))
-        : 0.5;
-
-    logger.info(
-      {
-        verdict,
-        confidence: confidence.toFixed(2),
-        recap: (args.recap ?? "").slice(0, 100),
-      },
-      "LLM evaluation complete",
-    );
-
-    return {
-      verdict,
-      confidence,
-      recap: typeof args.recap === "string" ? args.recap : "",
-      reasoning: typeof args.reasoning === "string" ? args.reasoning : "",
-      available: true,
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ err: msg }, "LLM evaluation failed — using fallback");
-    return {
-      verdict: "valid",
-      confidence: 0,
-      recap: `LLM evaluation failed: ${msg}`,
-      reasoning: `Error: ${msg}`,
-      available: false,
-    };
   }
+
+  return {
+    verdict: "invalid",
+    confidence: 0,
+    recap: "LLM evaluation exhausted all retries",
+    reasoning: "All retry attempts failed",
+    available: false,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -231,6 +259,7 @@ export async function scoreIssueValidity(issue: {
   title: string;
   body: string;
   mediaUrls: string[];
+  similarIssues?: Array<{ number: number; title: string; similarity: number }>;
 }): Promise<LLMScoreResult> {
   const result = await evaluateIssue(issue);
   if (!result.available) {

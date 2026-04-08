@@ -21,6 +21,7 @@ import {
   CODE_VERIFY_MAX_ITERATIONS,
 } from "../config.js";
 import { logger } from "../logger.js";
+import { collectStream } from "./llm-stream.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -247,7 +248,7 @@ async function toolAnalyzeScreenshot(
       });
     }
 
-    const response = await openai.chat.completions.create({
+    const stream = await openai.chat.completions.create({
       model: VISION_MODEL,
       messages: [
         { role: "system", content: SCREENSHOT_SYSTEM_PROMPT },
@@ -267,9 +268,11 @@ async function toolAnalyzeScreenshot(
       ],
       max_tokens: 300,
       temperature: 0,
+      stream: true,
     });
 
-    const content = response.choices[0]?.message?.content ?? "";
+    const response = await collectStream(stream);
+    const content = response.message.content ?? "";
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return jsonMatch[0];
@@ -471,31 +474,32 @@ Verify this bug: explore the code AND analyze all screenshots. Then call deliver
   ];
 
   for (let i = 0; i < CODE_VERIFY_MAX_ITERATIONS; i++) {
-    let response: OpenAI.ChatCompletion;
+    let assembled: Awaited<ReturnType<typeof collectStream>>;
     try {
-      response = await openai.chat.completions.create({
+      const stream = await openai.chat.completions.create({
         model: LLM_SCORING_MODEL,
         messages,
         tools,
         tool_choice: "auto",
         temperature: 0,
         max_tokens: 2000,
+        stream: true,
       });
+      assembled = await collectStream(stream);
     } catch (err) {
       logger.error({ err, issueNumber, iteration: i }, "Code-verify: LLM call failed");
       return { plausible: false, confidence: 0.8, reasoning: "Code verification LLM call failed. Cannot confirm bug." };
     }
 
-    const choice = response.choices[0];
-    if (!choice) break;
-
-    const msg = choice.message;
-    messages.push(msg);
+    const msg = assembled.message;
+    messages.push({
+      role: "assistant" as const,
+      content: msg.content,
+      tool_calls: msg.tool_calls.length > 0 ? msg.tool_calls : undefined,
+    });
 
     if (msg.tool_calls && msg.tool_calls.length > 0) {
       for (const tc of msg.tool_calls) {
-        if (!("function" in tc)) continue;
-
         const fnName = tc.function.name;
         let fnArgs: Record<string, unknown>;
         try {
