@@ -115,7 +115,7 @@ export async function publishVerdict(
 ): Promise<void> {
   logger.info({ issueNumber, verdict: result.verdict }, "Publishing verdict");
 
-  // 1. Apply GitHub mutations
+  // 1. Apply GitHub mutations (rich Greptile-style comments)
   switch (result.verdict) {
     case "valid":
       await applyValidVerdict(issueNumber, result.rationale, result.evidence);
@@ -125,6 +125,9 @@ export async function publishVerdict(
         issueNumber,
         result.rationale,
         result.checklist,
+        result.evidence,
+        result.spamScore,
+        result.mediaCheck,
       );
       break;
     case "duplicate":
@@ -137,6 +140,9 @@ export async function publishVerdict(
         issueNumber,
         result.duplicateOf,
         result.rationale,
+        result.evidence,
+        result.spamScore,
+        result.mediaCheck,
       );
       break;
   }

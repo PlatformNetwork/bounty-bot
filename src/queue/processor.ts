@@ -5,7 +5,7 @@
  * retry management, and dead-letter handling for exhausted retries.
  */
 
-import { MAX_RETRIES } from "../config.js";
+import { MAX_RETRIES, QUEUE_CONCURRENCY, QUEUE_INTERVAL } from "../config.js";
 import { logger } from "../logger.js";
 import {
   getPendingBounties,
@@ -69,15 +69,9 @@ export function enqueue(entry: QueueEntry): void {
 }
 
 /**
- * Process the next item in the queue.
- *
- * Acquires a distributed lock, runs the validation pipeline
- * (placeholder for Phase 4 expansion), and handles retries/dead-lettering.
+ * Process a single queue entry — lock, validate, publish verdict.
  */
-export async function processQueue(): Promise<void> {
-  const entry = queue.shift();
-  if (!entry) return;
-
+async function processOne(entry: QueueEntry): Promise<void> {
   const lockKey = `lock:queue:${entry.issueNumber}`;
   const locked = await acquireLock(lockKey, LOCK_OWNER, LOCK_TTL_SECONDS);
 
@@ -91,7 +85,6 @@ export async function processQueue(): Promise<void> {
   }
 
   try {
-    // Lock bounty in DB
     lockBounty(entry.issueNumber, LOCK_OWNER, LOCK_TTL_SECONDS * 1000);
     updateBountyStatus(entry.issueNumber, "in_progress");
 
@@ -100,13 +93,11 @@ export async function processQueue(): Promise<void> {
       "Queue: processing bounty",
     );
 
-    // Run the full validation pipeline
     const verdictResult = await runValidationPipeline(
       entry.issueNumber,
       entry.workspaceId,
     );
 
-    // Publish the verdict (GitHub mutations, DB, webhook, audit)
     await publishVerdict(entry.issueNumber, verdictResult, entry.workspaceId);
 
     logger.info(
@@ -123,7 +114,6 @@ export async function processQueue(): Promise<void> {
     const nextRetry = entry.retryCount + 1;
 
     if (nextRetry >= MAX_RETRIES) {
-      // Dead-letter the bounty via dead-letter manager
       await moveToDeadLetter(entry.issueNumber, msg, {
         retry_count: nextRetry,
         last_error: msg,
@@ -134,11 +124,7 @@ export async function processQueue(): Promise<void> {
         "Queue: bounty dead-lettered after max retries",
       );
     } else {
-      // Requeue with incremented retry count
-      queue.push({
-        ...entry,
-        retryCount: nextRetry,
-      });
+      queue.push({ ...entry, retryCount: nextRetry });
 
       insertRequeueRecord({
         issue_number: entry.issueNumber,
@@ -155,6 +141,22 @@ export async function processQueue(): Promise<void> {
     unlockBounty(entry.issueNumber);
     await releaseLock(lockKey, LOCK_OWNER);
   }
+}
+
+/**
+ * Process up to QUEUE_CONCURRENCY items in parallel.
+ */
+export async function processQueue(): Promise<void> {
+  if (queue.length === 0) return;
+
+  const batch = queue.splice(0, Math.min(QUEUE_CONCURRENCY, queue.length));
+
+  logger.info(
+    { batchSize: batch.length, remaining: queue.length },
+    "Queue: processing batch",
+  );
+
+  await Promise.allSettled(batch.map((entry) => processOne(entry)));
 }
 
 /**
@@ -183,6 +185,35 @@ export function getQueuePosition(issueNumber: number): number {
 }
 
 /**
+ * Recover pending bounties from the database into the in-memory queue.
+ * Called once at startup to handle issues inserted before the processor started.
+ */
+export function recoverPendingFromDb(): void {
+  const pending = getPendingBounties();
+  const existingNumbers = new Set(queue.map((e) => e.issueNumber));
+  let recovered = 0;
+
+  for (const bounty of pending) {
+    if (!existingNumbers.has(bounty.issue_number)) {
+      queue.push({
+        issueNumber: bounty.issue_number,
+        workspaceId: `ws-${bounty.issue_number}`,
+        retryCount: 0,
+        addedAt: new Date().toISOString(),
+      });
+      recovered++;
+    }
+  }
+
+  if (recovered > 0) {
+    logger.info(
+      { recovered, queueLength: queue.length },
+      "Queue processor: recovered pending bounties from DB",
+    );
+  }
+}
+
+/**
  * Start the queue processing loop.
  *
  * @param intervalMs - Processing interval in milliseconds (default 5000)
@@ -193,8 +224,11 @@ export function startQueueProcessor(intervalMs?: number): void {
     return;
   }
 
-  const interval = intervalMs ?? 5000;
-  logger.info({ intervalMs: interval }, "Queue processor: starting");
+  const interval = intervalMs ?? QUEUE_INTERVAL;
+  logger.info({ intervalMs: interval, concurrency: QUEUE_CONCURRENCY }, "Queue processor: starting");
+
+  // Recover any pending bounties from DB
+  recoverPendingFromDb();
 
   processorTimer = setInterval(() => {
     processQueue().catch((err: unknown) => {

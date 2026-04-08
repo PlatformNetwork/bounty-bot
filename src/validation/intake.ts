@@ -15,6 +15,7 @@ import {
   setIdempotencyKey,
   checkIdempotencyKey,
 } from "../redis.js";
+import { enqueue } from "../queue/processor.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -191,6 +192,14 @@ export async function processIntake(
     });
 
     await setIdempotencyKey(idempotencyKey, new Date().toISOString(), 3600);
+
+    // Push into the in-memory processing queue
+    enqueue({
+      issueNumber: issue.issueNumber,
+      workspaceId: `ws-${issue.issueNumber}`,
+      retryCount: 0,
+      addedAt: new Date().toISOString(),
+    });
 
     logger.info(
       { issueNumber: issue.issueNumber },

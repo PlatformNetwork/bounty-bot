@@ -12,6 +12,7 @@ import { validateMedia } from "./media.js";
 import { analyzeSpam, isSpam, type SpamIssueInput } from "../detection/spam.js";
 import { findDuplicates } from "../detection/duplicate.js";
 import { analyzeEditHistory } from "../detection/edit-history.js";
+import { verifyCodePlausibility } from "../detection/code-verify.js";
 import {
   scoreSpamLikelihood,
   scoreIssueValidity,
@@ -99,7 +100,7 @@ export async function runValidationPipeline(
 
   // 2. Media check
   logger.info({ issueNumber }, "Pipeline: running media check");
-  const mediaResult = await validateMedia(body);
+  const mediaResult = await validateMedia(body, issueNumber);
 
   // 3. Spam detection
   logger.info({ issueNumber }, "Pipeline: running spam detection");
@@ -145,6 +146,45 @@ export async function runValidationPipeline(
   logger.info({ issueNumber }, "Pipeline: running duplicate detection");
   const dupResult = await findDuplicates({ issueNumber, title, body });
 
+  // 4b. Agentic code verification — MANDATORY
+  logger.info({ issueNumber }, "Pipeline: running code verification");
+  const codeResult = await verifyCodePlausibility(issueNumber, title, body, mediaResult.urls);
+
+  if (!codeResult.plausible) {
+    logger.info(
+      { issueNumber, verdict: "invalid", confidence: codeResult.confidence, screenshotValid: codeResult.screenshotValid },
+      "Pipeline: code verification failed — bug not plausible",
+    );
+
+    return {
+      verdict: "invalid",
+      rationale: `Code verification failed: ${codeResult.reasoning}`,
+      checklist: [
+        "Ensure the bug report describes a real command/feature in Cortex",
+        "Verify that the described behavior matches the actual code",
+        ...(codeResult.screenshotValid === false ? ["Provide screenshots showing actual CLI output, not source code"] : []),
+      ],
+      evidence: {
+        media: mediaResult,
+        spam: { overallScore: spamResult.overallScore, details: spamResult.details },
+        duplicate: dupResult,
+        codeVerification: {
+          plausible: codeResult.plausible,
+          confidence: codeResult.confidence,
+          reasoning: codeResult.reasoning,
+          codeEvidence: codeResult.codeEvidence,
+          screenshotValid: codeResult.screenshotValid,
+          screenshotReasoning: codeResult.screenshotReasoning,
+        },
+      },
+      spamScore: spamResult.overallScore,
+      mediaCheck: {
+        hasMedia: mediaResult.hasMedia,
+        accessible: mediaResult.accessible,
+      },
+    };
+  }
+
   // 5. Edit history analysis
   logger.info({ issueNumber }, "Pipeline: running edit history analysis");
   const editResult = await analyzeEditHistory(owner, repo, issueNumber);
@@ -162,6 +202,14 @@ export async function runValidationPipeline(
       fraudScore: editResult.fraudScore,
       editCount: editResult.edits.length,
       details: editResult.details,
+    },
+    codeVerification: {
+      plausible: codeResult.plausible,
+      confidence: codeResult.confidence,
+      reasoning: codeResult.reasoning,
+      codeEvidence: codeResult.codeEvidence,
+      screenshotValid: codeResult.screenshotValid,
+      screenshotReasoning: codeResult.screenshotReasoning,
     },
   };
 

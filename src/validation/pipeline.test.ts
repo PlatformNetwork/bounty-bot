@@ -31,12 +31,29 @@ vi.mock("../detection/edit-history.js", () => ({
   analyzeEditHistory: vi.fn(),
 }));
 
+vi.mock("../detection/code-verify.js", () => ({
+  verifyCodePlausibility: vi.fn(),
+}));
+
+vi.mock("../detection/llm-scorer.js", () => ({
+  scoreSpamLikelihood: vi.fn(),
+  scoreIssueValidity: vi.fn(),
+}));
+
+vi.mock("../rules/index.js", () => ({
+  evaluateRules: vi.fn(),
+  formatRulesForPrompt: vi.fn(),
+}));
+
 import { runValidationPipeline } from "./pipeline.js";
 import { getIssue, GitHubApiError } from "../github/client.js";
 import { validateMedia } from "./media.js";
 import { analyzeSpam, isSpam } from "../detection/spam.js";
 import { findDuplicates } from "../detection/duplicate.js";
 import { analyzeEditHistory } from "../detection/edit-history.js";
+import { verifyCodePlausibility } from "../detection/code-verify.js";
+import { scoreIssueValidity } from "../detection/llm-scorer.js";
+import { evaluateRules, formatRulesForPrompt } from "../rules/index.js";
 
 describe("validation/pipeline", () => {
   const mockIssue = {
@@ -80,6 +97,28 @@ describe("validation/pipeline", () => {
       edits: [],
       details: "No edits",
     });
+    vi.mocked(verifyCodePlausibility).mockResolvedValue({
+      plausible: true,
+      confidence: 0.9,
+      reasoning: "Bug confirmed in source code.",
+      screenshotValid: true,
+      screenshotReasoning: "Screenshot shows real CLI output.",
+    });
+    vi.mocked(scoreIssueValidity).mockResolvedValue({
+      score: 0.8,
+      reasoning: "Valid bug report.",
+    });
+    vi.mocked(evaluateRules).mockResolvedValue({
+      codeResults: { passed: [], failed: [] },
+      llmInstructions: [],
+      totalCodeRules: 0,
+      totalLLMRules: 0,
+      hasReject: false,
+      hasFailed: false,
+      penaltyScore: 0,
+      summary: "0/0 rules",
+    });
+    vi.mocked(formatRulesForPrompt).mockReturnValue("");
   });
 
   it("all checks pass -> verdict valid", async () => {
@@ -141,6 +180,34 @@ describe("validation/pipeline", () => {
     const result = await runValidationPipeline(42001, "ws-1");
     expect(result.verdict).toBe("invalid");
     expect(result.rationale).toContain("Suspicious edit history");
+  });
+
+  it("code verification fails -> verdict invalid", async () => {
+    vi.mocked(verifyCodePlausibility).mockResolvedValue({
+      plausible: false,
+      confidence: 0.9,
+      reasoning: "Command not found in Cortex source code.",
+      screenshotValid: false,
+      screenshotReasoning: "Screenshot shows VS Code editor, not CLI output.",
+    });
+
+    const result = await runValidationPipeline(42001, "ws-1");
+    expect(result.verdict).toBe("invalid");
+    expect(result.rationale).toContain("Code verification failed");
+  });
+
+  it("code verification: screenshot shows code -> verdict invalid", async () => {
+    vi.mocked(verifyCodePlausibility).mockResolvedValue({
+      plausible: false,
+      confidence: 0.85,
+      reasoning: "Bug may exist but screenshot shows source code, not user experience.",
+      screenshotValid: false,
+      screenshotReasoning: "Screenshot is VS Code showing Rust source files.",
+    });
+
+    const result = await runValidationPipeline(42001, "ws-1");
+    expect(result.verdict).toBe("invalid");
+    expect(result.rationale).toContain("Code verification failed");
   });
 
   it("GitHub 404 -> verdict invalid with github_404 evidence", async () => {

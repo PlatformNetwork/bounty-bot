@@ -8,7 +8,7 @@
 
 import { TARGET_REPO, POLLER_INTERVAL } from "../config.js";
 import { logger } from "../logger.js";
-import { listRecentIssues } from "../github/client.js";
+import { listAllRecentIssues } from "../github/client.js";
 import { normalizeIssue, shouldProcess, processIntake } from "./intake.js";
 
 /* ------------------------------------------------------------------ */
@@ -36,11 +36,17 @@ export async function pollOnce(): Promise<void> {
   }
   const [owner, repo] = parts;
 
+  // On first poll, backfill last 24 hours
+  if (!lastPollTime) {
+    lastPollTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    logger.info({ since: lastPollTime }, "Poller: backfilling last 24h");
+  }
+
   logger.info({ since: lastPollTime }, "Poller: fetching recent issues");
 
   let issues;
   try {
-    issues = await listRecentIssues(owner, repo, lastPollTime);
+    issues = await listAllRecentIssues(owner, repo, lastPollTime);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({ err: msg }, "Poller: failed to fetch issues");

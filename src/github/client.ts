@@ -293,3 +293,24 @@ export async function listRecentIssues(
     `/repos/${owner}/${repo}/issues?${params.toString()}`,
   );
 }
+
+/**
+ * Fetch all recent issues with automatic pagination.
+ * Fetches up to 10 pages (1000 issues max).
+ */
+export async function listAllRecentIssues(
+  owner: string,
+  repo: string,
+  since?: string,
+): Promise<GitHubIssue[]> {
+  const all: GitHubIssue[] = [];
+  const maxPages = 10;
+
+  for (let page = 1; page <= maxPages; page++) {
+    const batch = await listRecentIssues(owner, repo, since, page);
+    all.push(...batch);
+    if (batch.length < 100) break;
+  }
+
+  return all;
+}

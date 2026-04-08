@@ -367,6 +367,12 @@ async function main(): Promise<void> {
   const rules = await loadRules();
   logger.info({ count: rules.length }, "Validation rules loaded");
 
+  // Clone/refresh target repo for code verification
+  const { startRepoRefreshLoop } = await import(
+    "./detection/code-verify.js"
+  );
+  startRepoRefreshLoop();
+
   // Start background services
   startPoller();
   startQueueProcessor();

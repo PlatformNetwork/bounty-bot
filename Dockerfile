@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
     g++ \
     sqlite3 \
     curl \
+    git \
+    ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -21,12 +23,19 @@ COPY package*.json ./
 # Install dependencies with native build flags
 RUN npm ci --unsafe-perm || npm install --unsafe-perm
 
-# Copy TypeScript config and source
+# Copy TypeScript config, source, and rules
 COPY tsconfig.json ./
 COPY src/ ./src/
+COPY rules/ ./rules/
 
 # Build TypeScript
 RUN npm run build
+
+# Compile rules to JS (they live outside src/ and aren't covered by tsc)
+# esbuild strips type-only imports and produces clean ESM .js files
+RUN for f in rules/code/*.ts rules/llm/*.ts; do \
+      [ -f "$f" ] && npx esbuild "$f" --outdir="$(dirname "$f")" --format=esm --platform=node 2>/dev/null && rm "$f" || true; \
+    done
 
 # Create required directories
 RUN mkdir -p /app/data

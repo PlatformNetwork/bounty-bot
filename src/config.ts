@@ -140,3 +140,29 @@ export const EMBEDDING_MODEL =
  */
 export const LLM_SCORING_MODEL =
   process.env.LLM_SCORING_MODEL || "google/gemini-3.1-pro-preview-customtools";
+
+/** URL of the target product repo to verify bugs against. */
+export const CORTEX_REPO_URL =
+  process.env.CORTEX_REPO_URL || "https://github.com/CortexLM/cortex";
+
+/** Local clone directory for the target product repo. */
+export const CORTEX_REPO_DIR =
+  process.env.CORTEX_REPO_DIR || "./data/cortex-repo";
+
+/** Max agentic iterations for code verification. */
+export const CODE_VERIFY_MAX_ITERATIONS = parseInt(
+  process.env.CODE_VERIFY_MAX_ITERATIONS || "50",
+  10,
+);
+
+/** Number of issues to process concurrently in the queue. */
+export const QUEUE_CONCURRENCY = parseInt(
+  process.env.QUEUE_CONCURRENCY || "3",
+  10,
+);
+
+/** Queue processor poll interval in milliseconds. */
+export const QUEUE_INTERVAL = parseInt(
+  process.env.QUEUE_INTERVAL || "2000",
+  10,
+);

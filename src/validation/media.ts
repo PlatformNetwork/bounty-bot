@@ -1,83 +1,183 @@
 /**
  * Media-gated validation.
  *
- * Extracts media URLs from issue body text, checks their accessibility
- * via HEAD requests, and returns a structured validation result.
+ * Uses GitHub's rendered body_html to extract real image URLs,
+ * then verifies accessibility. Trusts GitHub-hosted attachments.
  */
 
 import { logger } from "../logger.js";
+import { TARGET_REPO, GITHUB_TOKEN } from "../config.js";
 
 /* ------------------------------------------------------------------ */
-/*  URL extraction patterns                                            */
+/*  URL extraction — multiple strategies                               */
 /* ------------------------------------------------------------------ */
 
-/** Markdown image syntax: ![alt](url) */
-const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\((https?:\/\/[^)]+)\)/gi;
-
-/** HTML img tag: <img src="url"> */
-const HTML_IMG_RE = /<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi;
-
-/** Direct media file URLs (image extensions) */
-const DIRECT_MEDIA_RE =
-  /https?:\/\/[^\s)>"']+\.(?:png|jpg|jpeg|gif|webp|svg|mp4|mov|webm)/gi;
-
-/** GitHub user content / asset URLs */
-const GITHUB_MEDIA_RE =
-  /https:\/\/(?:user-images\.githubusercontent\.com|github\.com\/[^/]+\/[^/]+\/assets)\/[^\s)>"']+/gi;
-
-/** Video platform URLs */
-const VIDEO_PLATFORM_RE =
-  /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|vimeo\.com\/)[^\s)>"']+/gi;
-
-/* ------------------------------------------------------------------ */
-/*  Extraction                                                         */
-/* ------------------------------------------------------------------ */
-
-/**
- * Extract all media URLs from an issue body string.
- *
- * Finds image URLs (markdown and HTML), video URLs (YouTube, Vimeo,
- * direct .mp4/.webm), and GitHub user-content/asset URLs.
- */
-export function extractMediaUrls(body: string): string[] {
+/** Extract media URLs from GitHub's rendered HTML (most reliable). */
+export function extractFromHtml(html: string): string[] {
   const urls = new Set<string>();
+  let m: RegExpExecArray | null;
 
-  const patterns: RegExp[] = [
-    MARKDOWN_IMAGE_RE,
-    HTML_IMG_RE,
-    DIRECT_MEDIA_RE,
-    GITHUB_MEDIA_RE,
-    VIDEO_PLATFORM_RE,
-  ];
+  // <img> tags
+  const imgRe = /<img[^>]+src=["']([^"']+)["']/gi;
+  while ((m = imgRe.exec(html)) !== null) {
+    if (m[1] && m[1].startsWith("http")) urls.add(m[1]);
+  }
 
-  for (const pattern of patterns) {
-    // Reset lastIndex for global regex reuse
-    pattern.lastIndex = 0;
-    let match: RegExpExecArray | null;
+  // <a> wrapping images (GitHub wraps <img> in <a>)
+  const aImgRe = /<a[^>]+href=["']([^"']+)["'][^>]*>\s*<img/gi;
+  while ((m = aImgRe.exec(html)) !== null) {
+    if (m[1] && m[1].startsWith("http")) urls.add(m[1]);
+  }
 
-    while ((match = pattern.exec(body)) !== null) {
-      // Use capture group 1 if present (markdown/html), otherwise group 0
-      const url = match[1] ?? match[0];
-      urls.add(url);
-    }
+  // <video> tags
+  const videoRe = /<video[^>]+src=["']([^"']+)["']/gi;
+  while ((m = videoRe.exec(html)) !== null) {
+    if (m[1] && m[1].startsWith("http")) urls.add(m[1]);
+  }
+
+  // <source> inside <video>
+  const sourceRe = /<source[^>]+src=["']([^"']+)["']/gi;
+  while ((m = sourceRe.exec(html)) !== null) {
+    if (m[1] && m[1].startsWith("http")) urls.add(m[1]);
+  }
+
+  return [...urls];
+}
+
+/** Fallback: extract from raw markdown body. */
+export function extractFromMarkdown(body: string): string[] {
+  const urls = new Set<string>();
+  let m: RegExpExecArray | null;
+
+  // Markdown images: ![alt](url)
+  const mdImgRe = /!\[[^\]]*\]\((https?:\/\/[^)]+)\)/gi;
+  while ((m = mdImgRe.exec(body)) !== null) {
+    if (m[1]) urls.add(m[1]);
+  }
+
+  // HTML img tags in markdown
+  const htmlImgRe = /<img[^>]+src=["'](https?:\/\/[^"']+)["']/gi;
+  while ((m = htmlImgRe.exec(body)) !== null) {
+    if (m[1]) urls.add(m[1]);
+  }
+
+  // GitHub user-attachments (no file extension, UUID format)
+  const ghAttachRe =
+    /https:\/\/github\.com\/user-attachments\/assets\/[a-f0-9-]+/gi;
+  while ((m = ghAttachRe.exec(body)) !== null) {
+    urls.add(m[0]);
+  }
+
+  // GitHub user-images (both public and private)
+  const ghUserImgRe =
+    /https:\/\/(?:private-)?user-images\.githubusercontent\.com\/[^\s)>"']+/gi;
+  while ((m = ghUserImgRe.exec(body)) !== null) {
+    urls.add(m[0]);
+  }
+
+  // GitHub repo assets: github.com/owner/repo/assets/...
+  const ghRepoAssetsRe =
+    /https:\/\/github\.com\/[^/]+\/[^/]+\/assets\/[^\s)>"']+/gi;
+  while ((m = ghRepoAssetsRe.exec(body)) !== null) {
+    urls.add(m[0]);
+  }
+
+  // Raw githubusercontent
+  const rawGhRe =
+    /https:\/\/raw\.githubusercontent\.com\/[^\s)>"']+/gi;
+  while ((m = rawGhRe.exec(body)) !== null) {
+    urls.add(m[0]);
+  }
+
+  // Direct media file URLs (with extension)
+  const directRe =
+    /https?:\/\/[^\s)>"']+\.(?:png|jpg|jpeg|gif|webp|svg|mp4|mov|webm)/gi;
+  while ((m = directRe.exec(body)) !== null) {
+    urls.add(m[0]);
+  }
+
+  // Video platforms (YouTube, Vimeo)
+  const videoRe =
+    /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|vimeo\.com\/)\S+/gi;
+  while ((m = videoRe.exec(body)) !== null) {
+    urls.add(m[0]);
   }
 
   return [...urls];
 }
 
 /* ------------------------------------------------------------------ */
+/*  Fetch body_html from GitHub API                                    */
+/* ------------------------------------------------------------------ */
+
+async function fetchBodyHtml(issueNumber: number): Promise<string | null> {
+  const parts = TARGET_REPO.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const [owner, repo] = parts;
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`,
+      {
+        headers: {
+          Authorization: `Bearer ${GITHUB_TOKEN}`,
+          Accept: "application/vnd.github.full+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    return (data.body_html as string) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  Accessibility check                                                */
 /* ------------------------------------------------------------------ */
 
-const HEAD_TIMEOUT_MS = 5000;
+const CHECK_TIMEOUT_MS = 10_000;
+
+/** GitHub-hosted URLs that are always accessible if the issue exists. */
+function isTrustedGitHubUrl(url: string): boolean {
+  return (
+    /^https:\/\/github\.com\/user-attachments\/assets\/[a-f0-9-]+/.test(url) ||
+    url.includes("private-user-images.githubusercontent.com") ||
+    url.includes("user-images.githubusercontent.com") ||
+    /^https:\/\/github\.com\/[^/]+\/[^/]+\/assets\//.test(url)
+  );
+}
 
 /**
- * Check accessibility of a list of URLs via HEAD requests.
- *
- * @param urls - URLs to check
- * @returns Categorized results: accessible and inaccessible URL lists
+ * Check if a URL is accessible. Uses HEAD first, then GET with Range
+ * as fallback (GitHub S3 signed URLs reject HEAD with 403).
  */
-export async function checkMediaAccessibility(
+export async function isUrlAccessible(url: string): Promise<boolean> {
+  try {
+    const headRes = await fetch(url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+      redirect: "follow",
+    });
+    if (headRes.ok) return true;
+
+    // HEAD failed — try GET with Range (handles S3 signed URLs)
+    const getRes = await fetch(url, {
+      method: "GET",
+      headers: { Range: "bytes=0-0" },
+      signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
+      redirect: "follow",
+    });
+    return getRes.ok || getRes.status === 206;
+  } catch {
+    return false;
+  }
+}
+
+async function checkMediaAccessibility(
   urls: string[],
 ): Promise<{ accessible: string[]; inaccessible: string[] }> {
   const accessible: string[] = [];
@@ -85,16 +185,12 @@ export async function checkMediaAccessibility(
 
   const results = await Promise.allSettled(
     urls.map(async (url) => {
-      try {
-        const response = await fetch(url, {
-          method: "HEAD",
-          signal: AbortSignal.timeout(HEAD_TIMEOUT_MS),
-          redirect: "follow",
-        });
-        return { url, ok: response.ok };
-      } catch {
-        return { url, ok: false };
+      // Trust GitHub-hosted attachment URLs
+      if (isTrustedGitHubUrl(url)) {
+        return { url, ok: true };
       }
+      const ok = await isUrlAccessible(url);
+      return { url, ok };
     }),
   );
 
@@ -106,7 +202,6 @@ export async function checkMediaAccessibility(
         inaccessible.push(result.value.url);
       }
     } else {
-      // Promise rejected — treat as inaccessible
       inaccessible.push("unknown");
     }
   }
@@ -115,7 +210,7 @@ export async function checkMediaAccessibility(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Public validation API                                              */
+/*  Public API                                                         */
 /* ------------------------------------------------------------------ */
 
 export interface MediaValidationResult {
@@ -126,27 +221,49 @@ export interface MediaValidationResult {
 }
 
 /**
- * Run full media validation on an issue body.
+ * Run full media validation on an issue.
  *
- * 1. Extract all media URLs from the body
- * 2. Check each URL for accessibility (HEAD request, 5s timeout)
- * 3. Build evidence checklist items
- *
- * @param body - The issue body text
- * @returns Structured media validation result
+ * 1. Fetch body_html from GitHub API (contains resolved image URLs)
+ * 2. Extract media URLs from HTML
+ * 3. Fallback: extract from markdown body
+ * 4. Check accessibility (trust GitHub attachments, HEAD/GET others)
+ * 5. Accessible = at least one URL works
  */
 export async function validateMedia(
   body: string,
+  issueNumber?: number,
 ): Promise<MediaValidationResult> {
-  const urls = extractMediaUrls(body);
   const evidence: string[] = [];
+  let urls: string[] = [];
+
+  // Strategy 1: Use GitHub's rendered HTML (most reliable)
+  if (issueNumber) {
+    const html = await fetchBodyHtml(issueNumber);
+    if (html) {
+      urls = extractFromHtml(html);
+      if (urls.length > 0) {
+        evidence.push(
+          `Found ${urls.length} media URL(s) via GitHub rendered HTML`,
+        );
+      }
+    }
+  }
+
+  // Strategy 2: Fallback to markdown parsing
+  if (urls.length === 0) {
+    urls = extractFromMarkdown(body);
+    if (urls.length > 0) {
+      evidence.push(`Found ${urls.length} media URL(s) via markdown parsing`);
+    }
+  }
 
   if (urls.length === 0) {
     evidence.push("No media URLs found in issue body");
     return { hasMedia: false, accessible: false, urls, evidence };
   }
 
-  evidence.push(`Found ${urls.length} media URL(s)`);
+  // Deduplicate
+  urls = [...new Set(urls)];
 
   const { accessible, inaccessible } = await checkMediaAccessibility(urls);
 
@@ -154,13 +271,17 @@ export async function validateMedia(
     evidence.push(`${accessible.length} URL(s) accessible`);
   }
   if (inaccessible.length > 0) {
-    evidence.push(`${inaccessible.length} URL(s) inaccessible`);
+    evidence.push(
+      `${inaccessible.length} URL(s) inaccessible`,
+    );
   }
 
-  const allAccessible = inaccessible.length === 0;
+  // Accessible if at least one URL works
+  const isAccessible = accessible.length > 0;
 
   logger.info(
     {
+      issueNumber,
       totalUrls: urls.length,
       accessible: accessible.length,
       inaccessible: inaccessible.length,
@@ -170,7 +291,7 @@ export async function validateMedia(
 
   return {
     hasMedia: true,
-    accessible: allAccessible,
+    accessible: isAccessible,
     urls,
     evidence,
   };
