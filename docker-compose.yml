@@ -1,0 +1,99 @@
+# Bounty-bot Service - Docker Compose
+# Port allocation: 3235-3239 (Bounty-bot services)
+# Atlas uses 3230-3234 separately
+#
+# Watchtower polls GHCR every 60s and auto-restarts on new images.
+# CI pushes ghcr.io/platformnetwork/bounty-bot:latest on main.
+
+services:
+  bounty-bot:
+    image: ghcr.io/platformnetwork/bounty-bot:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bounty-bot
+    restart: unless-stopped
+    ports:
+      - "3235:3235"
+    environment:
+      - NODE_ENV=production
+      - PORT=3235
+      - DATA_DIR=/app/data
+      - REDIS_URL=redis://redis:6379
+      - TZ=UTC
+    volumes:
+      - bounty-data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3235/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - bounty-network
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  redis:
+    image: redis:7-alpine
+    container_name: bounty-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - bounty-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 64M
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: bounty-watchtower
+    restart: unless-stopped
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=60
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_ROLLING_RESTART=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_REVIVE_STOPPED=true
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_LIFECYCLE_HOOKS=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
+    networks:
+      - bounty-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+networks:
+  bounty-network:
+    driver: bridge
+
+volumes:
+  bounty-data:
+    name: bounty-bot-data
+  redis-data:
+    name: bounty-redis-data
