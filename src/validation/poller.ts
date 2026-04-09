@@ -9,7 +9,7 @@
 import { TARGET_REPO, POLLER_INTERVAL } from "../config.js";
 import { logger } from "../logger.js";
 import { listAllRecentIssues } from "../github/client.js";
-import { normalizeIssue, shouldProcess, processIntake } from "./intake.js";
+import { normalizeIssue, shouldProcess, processIntake, indexIssue } from "./intake.js";
 
 /* ------------------------------------------------------------------ */
 /*  State                                                              */
@@ -96,6 +96,8 @@ export async function pollOnce(): Promise<void> {
     const check = shouldProcess(normalized);
 
     if (!check.process) {
+      // Still index for duplicate detection corpus
+      indexIssue(normalized);
       continue;
     }
 

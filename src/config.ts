@@ -157,7 +157,7 @@ export const CODE_VERIFY_MAX_ITERATIONS = parseInt(
 
 /** Number of issues to process concurrently in the queue. */
 export const QUEUE_CONCURRENCY = parseInt(
-  process.env.QUEUE_CONCURRENCY || "3",
+  process.env.QUEUE_CONCURRENCY || "5",
   10,
 );
 

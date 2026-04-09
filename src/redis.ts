@@ -168,6 +168,18 @@ export async function checkIdempotencyKey(key: string): Promise<string | null> {
 }
 
 /**
+ * Flush all keys matching a pattern. Used at startup to clear stale
+ * locks left behind by a previous process that crashed or was restarted.
+ */
+export async function flushKeysByPattern(pattern: string): Promise<number> {
+  const redis = getRedis();
+  const keys = await redis.keys(pattern);
+  if (keys.length === 0) return 0;
+  await redis.del(...keys);
+  return keys.length;
+}
+
+/**
  * Gracefully disconnect from Redis.
  */
 export async function disconnectRedis(): Promise<void> {

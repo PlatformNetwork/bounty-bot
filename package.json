@@ -10,7 +10,8 @@
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "backfill": "tsx scripts/backfill-issues.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

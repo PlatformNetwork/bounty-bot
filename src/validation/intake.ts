@@ -8,7 +8,7 @@
 
 import { ISSUE_FLOOR, TARGET_REPO } from "../config.js";
 import { logger } from "../logger.js";
-import { getBounty, upsertBounty, isUserBlacklisted } from "../db/index.js";
+import { getBounty, upsertBounty, upsertEmbedding, isUserBlacklisted } from "../db/index.js";
 import {
   acquireLock,
   releaseLock,
@@ -16,6 +16,7 @@ import {
   checkIdempotencyKey,
 } from "../redis.js";
 import { enqueue } from "../queue/processor.js";
+import { generateFingerprint } from "../detection/duplicate.js";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -155,6 +156,35 @@ export function shouldProcess(issue: NormalizedIssue): ProcessResult {
 
 const LOCK_TTL_SECONDS = 60;
 const LOCK_OWNER = "intake";
+
+/**
+ * Index an issue into bounties + embeddings without queueing it for
+ * validation. Used by the poller to build the duplicate detection
+ * corpus for issues that are skipped by shouldProcess().
+ */
+export function indexIssue(issue: NormalizedIssue): void {
+  if (issue.issueNumber < ISSUE_FLOOR) return;
+
+  upsertBounty({
+    issue_number: issue.issueNumber,
+    repo: issue.repo,
+    title: issue.title,
+    body: issue.body,
+    author: issue.author,
+    created_at: issue.createdAt,
+    labels: issue.labels.join(","),
+    status: "indexed",
+  });
+
+  const combinedText = issue.title + " " + issue.body;
+
+  upsertEmbedding({
+    issue_number: issue.issueNumber,
+    title: issue.title,
+    title_fingerprint: generateFingerprint(issue.title),
+    body_fingerprint: combinedText,
+  });
+}
 
 /**
  * Process an issue through the intake pipeline.

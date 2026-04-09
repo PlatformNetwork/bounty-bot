@@ -16,7 +16,7 @@ import {
   insertRequeueRecord,
   getDeadLetterItems,
 } from "../db/index.js";
-import { acquireLock, releaseLock } from "../redis.js";
+import { acquireLock, releaseLock, flushKeysByPattern } from "../redis.js";
 import { runValidationPipeline } from "../validation/pipeline.js";
 import { publishVerdict } from "../validation/verdict.js";
 import { moveToDeadLetter } from "./dead-letter.js";
@@ -236,6 +236,18 @@ export function startQueueProcessor(intervalMs?: number): void {
 
   const interval = intervalMs ?? QUEUE_INTERVAL;
   logger.info({ intervalMs: interval, concurrency: QUEUE_CONCURRENCY }, "Queue processor: starting");
+
+  // Flush stale locks from previous run before recovering bounties
+  flushKeysByPattern("lock:queue:*")
+    .then((count) => {
+      if (count > 0) logger.info({ count }, "Queue processor: flushed stale queue locks");
+    })
+    .catch(() => {});
+  flushKeysByPattern("lock:bounty:*")
+    .then((count) => {
+      if (count > 0) logger.info({ count }, "Queue processor: flushed stale bounty locks");
+    })
+    .catch(() => {});
 
   // Recover any pending bounties from DB
   recoverPendingFromDb();

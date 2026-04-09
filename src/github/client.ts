@@ -54,7 +54,7 @@ export class GitHubApiError extends Error {
 /*  Rate limit state                                                   */
 /* ------------------------------------------------------------------ */
 
-const RATE_LIMIT_THRESHOLD = 50;
+const RATE_LIMIT_THRESHOLD = 200;
 const RATE_LIMIT_PAUSE_MS = 60_000;
 
 let rateLimitRemaining = Infinity;
@@ -129,6 +129,42 @@ async function githubFetch<T>(
   });
 
   updateRateLimit(response.headers);
+
+  // Handle rate limit exceeded: wait for reset and retry once
+  if (response.status === 403) {
+    const resetHeader = response.headers.get("x-ratelimit-remaining");
+    if (resetHeader === "0" || resetHeader === null) {
+      const resetAt = response.headers.get("x-ratelimit-reset");
+      const waitMs = resetAt
+        ? Math.max(0, parseInt(resetAt, 10) * 1000 - Date.now()) + 1000
+        : 60_000;
+      const cappedWait = Math.min(waitMs, 5 * 60 * 1000); // cap at 5 min
+      logger.warn(
+        { method, path, waitMs: cappedWait },
+        "GitHub rate limit hit (403) — waiting for reset then retrying",
+      );
+      await new Promise((resolve) => setTimeout(resolve, cappedWait));
+
+      // Single retry after waiting
+      const retryResponse = await fetch(url, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30_000),
+      });
+      updateRateLimit(retryResponse.headers);
+      if (!retryResponse.ok) {
+        const text = await retryResponse.text().catch(() => "");
+        throw new GitHubApiError(
+          `GitHub API ${method} ${path} returned ${retryResponse.status}: ${text}`,
+          retryResponse.status,
+          path,
+        );
+      }
+      if (retryResponse.status === 204) return undefined as T;
+      return retryResponse.json() as Promise<T>;
+    }
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
