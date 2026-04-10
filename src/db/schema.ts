@@ -48,21 +48,6 @@ export const CREATE_TABLES = [
   )`,
 
   /* ------------------------------------------------------------------ */
-  /*  requeue_records – manual / automated re-validation requests        */
-  /* ------------------------------------------------------------------ */
-  `CREATE TABLE IF NOT EXISTS requeue_records (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    issue_number      INTEGER,
-    requester_id      TEXT,
-    requester_context TEXT,
-    status            TEXT    DEFAULT 'pending',
-    requeued_at       TEXT,
-    completed_at      TEXT,
-    callback_sent     INTEGER DEFAULT 0,
-    FOREIGN KEY (issue_number) REFERENCES bounties(issue_number)
-  )`,
-
-  /* ------------------------------------------------------------------ */
   /*  spam_analysis – per-issue spam scoring breakdown                   */
   /* ------------------------------------------------------------------ */
   `CREATE TABLE IF NOT EXISTS spam_analysis (
@@ -159,10 +144,6 @@ export const CREATE_INDEXES = [
   // validation_results
   "CREATE INDEX IF NOT EXISTS idx_vr_issue             ON validation_results(issue_number)",
   "CREATE INDEX IF NOT EXISTS idx_vr_workspace         ON validation_results(workspace_id)",
-
-  // requeue_records
-  "CREATE INDEX IF NOT EXISTS idx_requeue_issue        ON requeue_records(issue_number)",
-  "CREATE INDEX IF NOT EXISTS idx_requeue_status       ON requeue_records(status)",
 
   // spam_analysis
   "CREATE INDEX IF NOT EXISTS idx_spam_issue           ON spam_analysis(issue_number)",

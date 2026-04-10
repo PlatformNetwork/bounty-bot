@@ -106,14 +106,6 @@ export const DUPLICATE_THRESHOLD = parseFloat(
 );
 
 /**
- * Maximum age (ms) of an issue eligible for requeue (default 24h).
- */
-export const REQUEUE_MAX_AGE_MS = parseInt(
-  process.env.REQUEUE_MAX_AGE_MS || "86400000",
-  10,
-);
-
-/**
  * OpenRouter API key for LLM-assisted scoring and embeddings.
  * Never log this value.
  */

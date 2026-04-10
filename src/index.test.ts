@@ -59,19 +59,6 @@ describe("bounty-bot app", () => {
       expect(response.status).toBe(401);
     });
 
-    it("POST /api/v1/validation/:issue_number/requeue returns 422 when issue not found", async () => {
-      await startApp();
-      const reqBody = "{}";
-      const signed = buildSignedHeaders(reqBody);
-      const response = await fetch(
-        `http://localhost:${testPort}/api/v1/validation/12345/requeue`,
-        { method: "POST", headers: { ...signed }, body: reqBody },
-      );
-      // Without DB initialised, the handler returns 500 (DB not ready)
-      // or 422 (issue not found) when DB is initialised
-      expect([422, 500]).toContain(response.status);
-    });
-
     it("POST /api/v1/validation/:issue_number/force-release returns response with valid HMAC", async () => {
       await startApp();
       const reqBody = "{}";

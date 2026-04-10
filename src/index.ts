@@ -28,12 +28,9 @@ import {
 } from "./validation/intake.js";
 import { startPoller, stopPoller } from "./validation/poller.js";
 import { startQueueProcessor, stopQueueProcessor } from "./queue/processor.js";
-import {
-  startRequeueRecovery,
-  stopRequeueRecovery,
-} from "./queue/requeue-recovery.js";
+
 import { getIssue } from "./github/client.js";
-import { handleRequeue, handleForceRelease } from "./api/requeue.js";
+import { handleForceRelease } from "./api/requeue.js";
 import flagRouter from "./api/flag.js";
 import {
   getProcessingStatus,
@@ -167,37 +164,6 @@ export function createApp(): express.Express {
         : null,
       updatedAt: bounty?.updated_at ?? status.lastUpdated,
     });
-  });
-
-  // POST /api/v1/validation/:issue_number/requeue — requeue for re-validation
-  apiRouter.post("/validation/:issue_number/requeue", (req, res) => {
-    const issueNumber = parseInt(req.params.issue_number, 10);
-    if (isNaN(issueNumber)) {
-      res
-        .status(400)
-        .json({ error: "bad_request", message: "Invalid issue_number" });
-      return;
-    }
-
-    const body = req.body as Record<string, unknown>;
-    const requesterId = (body.requester_id as string) || "unknown";
-    const requesterContext = body.requester_context as object | undefined;
-
-    handleRequeue(issueNumber, requesterId, requesterContext)
-      .then((result) => {
-        if (result.success) {
-          res.status(202).json({ status: "requeued", issueNumber });
-        } else {
-          res
-            .status(422)
-            .json({ error: "requeue_rejected", message: result.error });
-        }
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.error({ issueNumber, err: msg }, "Requeue endpoint failed");
-        res.status(500).json({ error: "requeue_failed", message: msg });
-      });
   });
 
   // POST /api/v1/validation/:issue_number/force-release — force-release lock
@@ -376,8 +342,6 @@ async function main(): Promise<void> {
   // Start background services
   startPoller();
   startQueueProcessor();
-  startRequeueRecovery();
-
   // Mark as ready
   setReady(true);
   logger.info(`${SERVICE_NAME} ready`);
@@ -388,7 +352,6 @@ async function main(): Promise<void> {
     setReady(false);
     stopPoller();
     stopQueueProcessor();
-    stopRequeueRecovery();
     disconnectRedis().catch(() => {});
     server.close(() => {
       logger.info(`${SERVICE_NAME} shut down`);

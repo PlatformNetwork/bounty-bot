@@ -13,7 +13,6 @@ import {
   updateBountyStatus,
   lockBounty,
   unlockBounty,
-  insertRequeueRecord,
   getDeadLetterItems,
 } from "../db/index.js";
 import { acquireLock, releaseLock, flushKeysByPattern } from "../redis.js";
@@ -125,12 +124,6 @@ async function processOne(entry: QueueEntry): Promise<void> {
       );
     } else {
       queue.push({ ...entry, retryCount: nextRetry });
-
-      insertRequeueRecord({
-        issue_number: entry.issueNumber,
-        requester_id: LOCK_OWNER,
-        requester_context: `Retry ${nextRetry}/${MAX_RETRIES}: ${msg}`,
-      });
 
       logger.info(
         { issueNumber: entry.issueNumber, retry: nextRetry },

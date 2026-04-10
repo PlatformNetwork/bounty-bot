@@ -158,25 +158,6 @@ export interface ValidationResultRow {
   created_at: string | null;
 }
 
-/** Shape accepted by `insertRequeueRecord`. */
-export interface RequeueRecordData {
-  issue_number: number;
-  requester_id?: string;
-  requester_context?: string;
-}
-
-/** Row returned when querying the `requeue_records` table. */
-export interface RequeueRecordRow {
-  id: number;
-  issue_number: number;
-  requester_id: string | null;
-  requester_context: string | null;
-  status: string;
-  requeued_at: string | null;
-  completed_at: string | null;
-  callback_sent: number;
-}
-
 /** Shape accepted by `insertSpamAnalysis`. */
 export interface SpamAnalysisData {
   issue_number: number;
@@ -435,79 +416,6 @@ export function getLatestValidation(
       "SELECT * FROM validation_results WHERE issue_number = ? ORDER BY id DESC LIMIT 1",
     )
     .get(issueNumber) as ValidationResultRow | undefined;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Requeue records                                                    */
-/* ------------------------------------------------------------------ */
-
-/**
- * Store a requeue record.
- */
-export function insertRequeueRecord(data: RequeueRecordData): void {
-  const d = getBountyDb();
-  const ts = now();
-
-  d.prepare(
-    `
-    INSERT INTO requeue_records (
-      issue_number, requester_id, requester_context, status, requeued_at
-    ) VALUES (?, ?, ?, 'pending', ?)
-  `,
-  ).run(
-    data.issue_number,
-    data.requester_id ?? null,
-    data.requester_context ?? null,
-    ts,
-  );
-}
-
-/**
- * Get the latest requeue record for an issue.
- */
-export function getRequeueRecord(
-  issueNumber: number,
-): RequeueRecordRow | undefined {
-  const d = getBountyDb();
-  return d
-    .prepare(
-      "SELECT * FROM requeue_records WHERE issue_number = ? ORDER BY id DESC LIMIT 1",
-    )
-    .get(issueNumber) as RequeueRecordRow | undefined;
-}
-
-/**
- * Update the status of a requeue record.
- */
-export function updateRequeueStatus(id: number, status: string): void {
-  const d = getBountyDb();
-  const ts = now();
-
-  d.prepare(
-    "UPDATE requeue_records SET status = ?, completed_at = ? WHERE id = ?",
-  ).run(status, ts, id);
-}
-
-/**
- * Get all requeue records with status = 'pending'.
- */
-export function getPendingRequeues(): RequeueRecordRow[] {
-  const d = getBountyDb();
-  return d
-    .prepare(
-      "SELECT * FROM requeue_records WHERE status = 'pending' ORDER BY id",
-    )
-    .all() as RequeueRecordRow[];
-}
-
-/**
- * Mark a requeue record as completed (resolved) with callback_sent flag.
- */
-export function markRequeueCompleted(id: number, completedAt: string): void {
-  const d = getBountyDb();
-  d.prepare(
-    "UPDATE requeue_records SET status = ?, completed_at = ?, callback_sent = 1 WHERE id = ?",
-  ).run("resolved", completedAt, id);
 }
 
 /* ------------------------------------------------------------------ */

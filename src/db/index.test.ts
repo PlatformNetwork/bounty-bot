@@ -17,11 +17,6 @@ import {
   getInProgressBounties,
   insertValidationResult,
   getLatestValidation,
-  insertRequeueRecord,
-  getRequeueRecord,
-  updateRequeueStatus,
-  getPendingRequeues,
-  markRequeueCompleted,
   insertSpamAnalysis,
   upsertEmbedding,
   getEmbedding,
@@ -228,60 +223,6 @@ describe("db/index", () => {
   /* ---------------------------------------------------------------- */
   /*  Requeue records                                                  */
   /* ---------------------------------------------------------------- */
-
-  describe("requeue records", () => {
-    beforeEach(() => {
-      upsertBounty({ issue_number: 42001 });
-    });
-
-    it("insertRequeueRecord creates a record with pending status", () => {
-      insertRequeueRecord({ issue_number: 42001, requester_id: "user-1" });
-      const row = getRequeueRecord(42001);
-      expect(row).toBeDefined();
-      expect(row!.status).toBe("pending");
-      expect(row!.requester_id).toBe("user-1");
-    });
-
-    it("getRequeueRecord returns undefined when no record exists", () => {
-      expect(getRequeueRecord(99999)).toBeUndefined();
-    });
-
-    it("updateRequeueStatus changes the status", () => {
-      insertRequeueRecord({ issue_number: 42001 });
-      const record = getRequeueRecord(42001)!;
-      updateRequeueStatus(record.id, "completed");
-      const updated = getRequeueRecord(42001)!;
-      expect(updated.status).toBe("completed");
-    });
-
-    it("getPendingRequeues returns only pending records", () => {
-      insertRequeueRecord({ issue_number: 42001, requester_id: "a" });
-      upsertBounty({ issue_number: 42002 });
-      insertRequeueRecord({ issue_number: 42002, requester_id: "b" });
-      const pending = getPendingRequeues();
-      expect(pending).toHaveLength(2);
-    });
-
-    it("markRequeueCompleted sets resolved status and callback_sent", () => {
-      insertRequeueRecord({ issue_number: 42001 });
-      const record = getRequeueRecord(42001)!;
-      markRequeueCompleted(record.id, new Date().toISOString());
-      const updated = getRequeueRecord(42001)!;
-      expect(updated.status).toBe("resolved");
-      expect(updated.callback_sent).toBe(1);
-      expect(updated.completed_at).toBeDefined();
-    });
-
-    it("insertRequeueRecord stores requester_context", () => {
-      insertRequeueRecord({
-        issue_number: 42001,
-        requester_id: "user-1",
-        requester_context: '{"reason":"re-check"}',
-      });
-      const row = getRequeueRecord(42001)!;
-      expect(row.requester_context).toBe('{"reason":"re-check"}');
-    });
-  });
 
   /* ---------------------------------------------------------------- */
   /*  Spam analysis                                                    */
